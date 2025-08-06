@@ -1,0 +1,1994 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tradefolio</title>
+    
+    <!-- Meta per l'aspetto su mobile -->
+    <meta name="theme-color" content="#1f2937"/>
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Tradefolio">
+    <link rel="apple-touch-icon" href="https://placehold.co/192x192/ffffff/000000?text=TF">
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* Stili generali del corpo */
+        body { 
+            font-family: 'Inter', sans-serif; 
+            background-color: #1f2937; /* Grigio Scuro */
+            color: #F3F4F6; /* Testo Bianco Sporco */
+        }
+        .font-poppins {
+            font-family: 'Poppins', sans-serif;
+        }
+        /* Classi per profitto e perdita */
+        .profit { color: #22c55e; font-weight: 600; }
+        .loss { color: #ef4444; font-weight: 600; }
+
+        /* Stili per lo splash screen */
+        .splash-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #1f2937;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1020;
+            transition: opacity 0.8s ease-out;
+        }
+
+        #app-container {
+            transition: opacity 0.8s ease-in;
+            opacity: 0;
+            pointer-events: none;
+        }
+        #app-container.visible {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        /* Stili per il nuovo calendario orizzontale */
+        .horizontal-calendar-wrapper {
+            overflow-x: auto;
+            padding-bottom: 1rem; /* Spazio per la barra di scorrimento */
+            -webkit-overflow-scrolling: touch; /* Scrolling fluido su iOS */
+        }
+        .horizontal-calendar-content {
+            display: flex;
+            gap: 0.75rem; /* Spazio tra le colonne dei giorni */
+            min-width: min-content; /* Permette al contenuto di definire la larghezza */
+            align-items: flex-start; 
+        }
+        .day-column {
+            flex: 0 0 200px; /* Larghezza fissa per ogni colonna, non si ridimensiona/espande */
+            display: flex;
+            flex-direction: column;
+            background-color: #374151;
+            border-radius: 0.75rem;
+            padding: 0.75rem;
+            border: 1px solid #4b5563;
+            min-height: 120px; /* Altezza minima per tutte le colonne, anche quelle vuote */
+        }
+
+        /* Stili per gli elementi di trade */
+        .trade-item {
+            border: 1px solid #4b5563;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            font-size: 0.8rem;
+            line-height: 1.3;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .trade-item:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .trade-actions { display: flex; gap: 0.25rem; }
+        .action-btn { 
+            padding: 0.2rem 0.4rem; 
+            font-size: 0.7rem; 
+            border-radius: 0.25rem; 
+            color: white; 
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+
+        /* Stili per i modali */
+        .modal-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(5px);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: #374151; /* Grigio Chiaro */
+            padding: 1rem;
+            border-radius: 1rem;
+            width: 95%;
+            position: relative;
+            color: #F3F4F6;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+            border: 1px solid #4b5563;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .modal-body { overflow-y: auto; padding-right: 0.5rem; }
+        .modal-input { 
+            width: 100%; 
+            border: 1px solid #4b5563; 
+            border-radius: 0.5rem; 
+            padding: 0.6rem;
+            background-color: #4b5563; 
+            color: #F3F4F6;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .modal-input:focus {
+            outline: none;
+            border-color: #FBBF24;
+            box-shadow: 0 0 0 3px rgba(251, 191, 36, 0.3);
+        }
+        .modal-btn { 
+            font-weight: 600; 
+            padding: 0.75rem 1.5rem; 
+            border-radius: 0.5rem; 
+            transition: all 0.3s; 
+            cursor: pointer; 
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            text-decoration: none;
+        }
+        .modal-btn:disabled { 
+            background-color: #4b5563; 
+            cursor: not-allowed; 
+            opacity: 0.7; 
+        }
+
+        /* Stili per il ticker dei prezzi */
+        .ticker-wrap {
+          width: 100%;
+          overflow: hidden;
+          background-color: #111827; /* Grigio più scuro per il ticker */
+          padding: 0.25rem 0; /* Ridotto per compattezza */
+          white-space: nowrap;
+        }
+        .ticker-move { display: inline-block; animation: ticker 180s linear infinite; }
+        .ticker-item {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0 1.5rem;
+          color: #D1D5DB;
+          font-size: 0.8rem; /* Ridotto per compattezza */
+        }
+        .ticker-item img { width: 16px; height: 16px; }
+        @keyframes ticker {
+          0% { transform: translateX(0); }
+          100% { transform: translateX(-100%); }
+        }
+        
+        /* Stile per il loader */
+        .loader {
+            width: 48px; height: 48px;
+            border: 5px solid #4b5563;
+            border-bottom-color: #FBBF24;
+            border-radius: 50%;
+            display: inline-block;
+            box-sizing: border-box;
+            animation: rotation 1s linear infinite;
+        }
+        @keyframes rotation {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Stili Calendario Economico */
+        .star-filled { color: #FBBF24; }
+        .star-empty { color: #6B7280; }
+
+        /* Stile per linea nel logo */
+        .trade-line {
+            position: relative;
+            display: inline-block;
+        }
+        .trade-line::after {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 50%;
+            width: 100%;
+            height: 2px;
+            background-color: #1f2937; /* Colore dello sfondo principale */
+            transform: translateY(-50%);
+            transform-origin: center;
+        }
+
+        /* Stili per il menu laterale */
+        .side-menu {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 280px;
+            height: 100%;
+            background-color: rgba(31, 41, 55, 0.85);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border-right: 1px solid #4b5563;
+            box-shadow: 5px 0px 25px rgba(0, 0, 0, 0.3);
+            transform: translateX(-100%) scale(0.95);
+            transform-origin: left center;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 1010;
+            padding: 1.25rem;
+            display: flex;
+            flex-direction: column;
+        }
+        .side-menu.open {
+            transform: translateX(0) scale(1);
+        }
+        .menu-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: rgba(0, 0, 0, 0.6);
+            backdrop-filter: blur(2px);
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease-in-out, visibility 0.3s ease-in-out;
+            z-index: 1005;
+        }
+        .menu-overlay.open {
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        /* Stile per forzare il dropdown in stile desktop su mobile */
+        .native-hidden-select {
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%239CA3AF' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+            background-position: right 0.5rem center;
+            background-repeat: no-repeat;
+            background-size: 1.5em 1.5em;
+            padding-right: 2.5rem;
+        }
+    </style>
+</head>
+<body class="bg-gray-800 text-gray-100">
+
+    <!-- Splash Screen -->
+    <div id="splash-screen" class="splash-screen">
+        <div class="flex-grow flex items-center justify-center">
+             <h1 class="text-5xl font-poppins">
+                <span class="text-white font-bold trade-line">Trade</span><span class="font-normal" style="color: #FBBF24;">folio</span>
+            </h1>
+        </div>
+        <div id="auth-container" class="pb-16">
+            <button id="google-signin-btn" class="inline-flex items-center justify-center gap-3 bg-white hover:bg-gray-200 text-gray-800 font-semibold py-2 px-4 rounded-lg shadow-md transition-colors text-sm">
+                <svg class="w-5 h-5" aria-hidden="true" focusable="false" data-prefix="fab" data-icon="google" role="img" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 488 512"><path fill="currentColor" d="M488 261.8C488 403.3 391.1 504 248 504 110.8 504 0 393.2 0 256S110.8 8 248 8c66.8 0 126 23.4 172.9 61.9l-76.2 74.9C307.4 114.5 280.5 104 248 104c-73.8 0-134.3 60.3-134.3 134.3s60.5 134.3 134.3 134.3c83.5 0 119.3-61.2 122.7-92.2H248v-85.3h236.1c2.3 12.7 3.9 24.9 3.9 41.4z"></path></svg>
+                <span id="google-signin-text">Accedi con Google</span>
+            </button>
+        </div>
+    </div>
+
+    <div id="menu-overlay"></div>
+    <div id="side-menu" class="side-menu"></div>
+
+    <div id="app-container" class="min-h-screen flex flex-col">
+        <!-- Header Fisso in Alto -->
+        <header class="sticky top-0 z-50 bg-gray-800/70 backdrop-blur-lg border-b border-gray-700">
+            <div class="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2">
+                 <div class="flex justify-between items-center">
+                     <h1 class="text-2xl font-poppins">
+                         <span class="text-white font-bold trade-line">Trade</span><span class="font-normal" style="color: #FBBF24;">folio</span>
+                     </h1>
+                     <button data-action="toggle-menu" class="p-2 rounded-md text-gray-300 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16" />
+                        </svg>
+                    </button>
+                 </div>
+                <div id="header-actions" class="flex justify-center items-start gap-2 mt-3">
+                    <!-- I pulsanti dell'header verranno renderizzati qui da JS -->
+                </div>
+            </div>
+        </header>
+
+        <!-- Contenuto Principale (scorrevole) -->
+        <main class="flex-grow w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+            <!-- Selettore Mese/Anno -->
+            <div class="flex justify-center items-center gap-1 sm:gap-2 mb-6 w-full">
+                <button id="prev-year-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-semibold p-2 rounded-lg text-xs sm:text-sm transition-colors">&lt;&lt;</button>
+                <button id="prev-month-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-semibold p-2 rounded-lg text-xs sm:text-sm transition-colors">&lt;</button>
+                <span id="current-month-year" class="text-base sm:text-lg font-bold text-gray-100 min-w-[140px] sm:min-w-[160px] text-center"></span>
+                <button id="next-month-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-semibold p-2 rounded-lg text-xs sm:text-sm transition-colors">&gt;</button>
+                <button id="next-year-btn" class="bg-gray-700 hover:bg-gray-600 text-white font-semibold p-2 rounded-lg text-xs sm:text-sm transition-colors">&gt;&gt;</button>
+            </div>
+            
+            <!-- Contenitore Calendario e Grafico -->
+            <div id="calendar-container" class="pb-28"></div>
+        </main>
+        
+        <!-- Ticker Fisso in Basso -->
+        <div id="ticker-container" class="fixed bottom-16 left-0 right-0 z-40"></div>
+
+        <!-- Barra di Navigazione Inferiore Fissa -->
+        <nav class="fixed bottom-0 left-0 right-0 bg-gray-800/80 backdrop-blur-lg border-t border-gray-700 z-50">
+            <div class="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div id="bottom-nav-content" class="relative flex justify-between items-center h-16">
+                     <!-- Il contenuto della navigazione inferiore verrà renderizzato qui da JS -->
+                </div>
+            </div>
+        </nav>
+    </div>
+
+    <!-- Contenitore per i Modali -->
+    <div id="modals-container"></div>
+
+    <!-- Firebase SDK -->
+    <script type="module">
+        // Importa le funzioni necessarie dai moduli SDK di cui hai bisogno
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
+        import { getAuth, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
+        
+        const firebaseConfig = {
+          apiKey: "AIzaSyDoNfXrcofobe3NvSFdrzhqlmGgQT-7qWY",
+          authDomain: "tradefolio-2c387.firebaseapp.com",
+          projectId: "tradefolio-2c387",
+          storageBucket: "tradefolio-2c387.appspot.com",
+          messagingSenderId: "119467817034",
+          appId: "1:119467817034:web:d1b1e7f0726847fb0b8eb3",
+          measurementId: "G-L762CP81GC"
+        };
+
+        // Inizializza Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const googleProvider = new GoogleAuthProvider();
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- STATE MANAGEMENT ---
+            let state = {
+                trades: [],
+                currentYear: new Date().getFullYear(),
+                currentMonthIndex: new Date().getMonth(),
+                tickerData: [],
+                apiKey: 'AIzaSyBXkdQjsy5xR6KcFz-Gcqijqh9NTjliT6o', // API Key per Gemini
+                modal: { isOpen: false, mode: null, data: null },
+                confirmationModal: { isOpen: false, message: '', onConfirm: null },
+                infoModal: { isOpen: false, title: '', content: '', isLoading: false },
+                converterModal: { isOpen: false },
+                contactModal: { isOpen: false },
+                isMenuOpen: false,
+                currentCurrency: 'usd',
+                supportedCurrencies: [
+                    { code: 'usd', symbol: '$', name: 'Dollaro USA' },
+                    { code: 'eur', symbol: '€', name: 'Euro' },
+                    { code: 'gbp', symbol: '£', name: 'Sterlina Inglese' },
+                    { code: 'jpy', symbol: '¥', name: 'Yen Giapponese' },
+                    { code: 'aud', symbol: 'A$', name: 'Dollaro Australiano' },
+                    { code: 'cad', symbol: 'C$', name: 'Dollaro Canadese' },
+                    { code: 'chf', symbol: 'Fr', name: 'Franco Svizzero' },
+                    { code: 'cny', symbol: '¥', name: 'Yuan Cinese' }
+                ],
+                currentLanguage: 'it',
+                supportedLanguages: [
+                    { code: 'it', name: 'Italiano', shortName: 'ITA' },
+                    { code: 'en', name: 'English', shortName: 'ENG' },
+                    { code: 'de', name: 'Deutsch', shortName: 'DEU' },
+                    { code: 'fr', name: 'Français', shortName: 'FRA' },
+                ],
+                user: null, // Per memorizzare l'utente autenticato
+                tradesListener: null, // Per tenere traccia del listener di Firestore
+            };
+            let profitChart = null;
+
+            // --- TRANSLATIONS ---
+            const translations = {
+                it: {
+                    monthNames: ['Gennaio', 'Febbraio', 'Marzo', 'Aprile', 'Maggio', 'Giugno', 'Luglio', 'Agosto', 'Settembre', 'Ottobre', 'Novembre', 'Dicembre'],
+                    dayNames: ['Dom', 'Lun', 'Mar', 'Mer', 'Gio', 'Ven', 'Sab'],
+                    aiAnalysis: 'Analisi AI',
+                    calendar: 'Calendario',
+                    news: 'Notizie',
+                    report: 'Report',
+                    summary: 'Riepilogo',
+                    monthActivity: "Attività del Mese",
+                    open: 'Apri',
+                    close: 'Chiudi',
+                    other: 'Altro',
+                    downloadCSV: 'Scarica Report CSV',
+                    infoAndTerms: 'Info & Termini',
+                    netProfit: 'Guadagno Netto',
+                    day: 'Giorno',
+                    tickerOffline: 'Ticker non disponibile offline.',
+                    loadingPrices: 'Caricamento prezzi...',
+                    openNewPosition: 'Apri Nuova Posizione',
+                    closePosition: 'Chiudi Posizione',
+                    editTransaction: 'Modifica Transazione',
+                    selectCrypto: 'Seleziona una criptovaluta',
+                    purchasePrice: 'Prezzo Acquisto',
+                    quantity: 'Quantità',
+                    savePosition: 'Salva Posizione',
+                    selectPosition: 'Seleziona posizione',
+                    salePrice: 'Prezzo Vendita',
+                    closePositionBtn: 'Chiudi Posizione',
+                    cryptoSymbol: 'Simbolo Crypto',
+                    purchaseDate: 'Data Acquisto',
+                    saleDate: 'Data Vendita',
+                    saveChanges: 'Salva Modifiche',
+                    confirmRequest: 'Conferma Richiesta',
+                    deleteConfirmMsg: "Sei sicuro di voler eliminare questa transazione? L'azione è irreversibile.",
+                    cancel: 'Annulla',
+                    confirm: 'Conferma',
+                    searchingRealTimeNews: 'Ricerca notizie in tempo reale...',
+                    latestFinancialNews: 'Ultime Notizie Finanziarie',
+                    error: 'Errore',
+                    errorLoadingNews: "Impossibile caricare le notizie AI in questo momento.",
+                    loadingCalendar: 'Caricamento Calendario...',
+                    economicCalendar: 'Calendario Economico',
+                    errorLoadingCalendar: "Impossibile caricare il calendario in questo momento.",
+                    noTradesToAnalyze: "Nessuna operazione chiusa in questo mese da analizzare.",
+                    monthlyReportFor: "Report di",
+                    noTradesThisMonth: "Nessuna operazione chiusa in questo mese.",
+                    termsAndConditions: "Termini e Condizioni",
+                    edit: "Edita",
+                    delete: "Delete",
+                    converter: "Convertitore",
+                    currencyConverter: "Convertitore di Crypto",
+                    from: "Da",
+                    to: "A",
+                    amount: "Importo",
+                    contacts: "Contatti",
+                    sendEmail: "Invia Email",
+                    subject: "Oggetto",
+                    message: "Messaggio",
+                    signInWithGoogle: "Accedi con Google",
+                    signOut: "Esci",
+                    welcome: "Benvenuto",
+                    signingIn: "Accesso in corso..."
+                },
+                en: {
+                    monthNames: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+                    dayNames: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+                    aiAnalysis: 'AI Analysis',
+                    calendar: 'Calendar',
+                    news: 'News',
+                    report: 'Report',
+                    summary: 'Summary',
+                    monthActivity: "Month's Activity",
+                    open: 'Open',
+                    close: 'Close',
+                    other: 'More',
+                    downloadCSV: 'Download CSV Report',
+                    infoAndTerms: 'Info & Terms',
+                    netProfit: 'Net Profit',
+                    day: 'Day',
+                    tickerOffline: 'Ticker unavailable offline.',
+                    loadingPrices: 'Loading prices...',
+                    openNewPosition: 'Open New Position',
+                    closePosition: 'Close Position',
+                    editTransaction: 'Edit Transaction',
+                    selectCrypto: 'Select a cryptocurrency',
+                    purchasePrice: 'Purchase Price',
+                    quantity: 'Quantity',
+                    savePosition: 'Save Position',
+                    selectPosition: 'Select position',
+                    salePrice: 'Sale Price',
+                    closePositionBtn: 'Close Position',
+                    cryptoSymbol: 'Crypto Symbol',
+                    purchaseDate: 'Purchase Date',
+                    saleDate: 'Sale Date',
+                    saveChanges: 'Save Changes',
+                    confirmRequest: 'Confirm Request',
+                    deleteConfirmMsg: "Are you sure you want to delete this transaction? This action is irreversible.",
+                    cancel: 'Cancel',
+                    confirm: 'Confirm',
+                    searchingRealTimeNews: 'Searching for real-time news...',
+                    latestFinancialNews: 'Latest Financial News',
+                    error: 'Error',
+                    errorLoadingNews: "Could not load AI news at this time.",
+                    loadingCalendar: 'Loading Calendar...',
+                    economicCalendar: 'Economic Calendar',
+                    errorLoadingCalendar: "Could not load the calendar at this time.",
+                    noTradesToAnalyze: "No closed trades in this month to analyze.",
+                    monthlyReportFor: "Report for",
+                    noTradesThisMonth: "No closed trades in this month.",
+                    termsAndConditions: "Terms and Conditions",
+                    edit: "Edit",
+                    delete: "Delete",
+                    converter: "Converter",
+                    currencyConverter: "Crypto Converter",
+                    from: "From",
+                    to: "To",
+                    amount: "Amount",
+                    contacts: "Contacts",
+                    sendEmail: "Send Email",
+                    subject: "Subject",
+                    message: "Message",
+                    signInWithGoogle: "Sign in with Google",
+                    signOut: "Sign Out",
+                    welcome: "Welcome",
+                    signingIn: "Signing in..."
+                },
+                de: {
+                    monthNames: ['Januar', 'Februar', 'März', 'April', 'Mai', 'Juni', 'Juli', 'August', 'September', 'Oktober', 'November', 'Dezember'],
+                    dayNames: ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'],
+                    aiAnalysis: 'KI-Analyse',
+                    calendar: 'Kalender',
+                    news: 'Nachrichten',
+                    report: 'Bericht',
+                    summary: 'Zusammenfassung',
+                    monthActivity: "Aktivität des Monats",
+                    open: 'Öffnen',
+                    close: 'Schließen',
+                    other: 'Mehr',
+                    downloadCSV: 'CSV-Bericht herunterladen',
+                    infoAndTerms: 'Info & AGB',
+                    netProfit: 'Nettogewinn',
+                    day: 'Tag',
+                    tickerOffline: 'Ticker offline nicht verfügbar.',
+                    loadingPrices: 'Preise werden geladen...',
+                    openNewPosition: 'Neue Position eröffnen',
+                    closePosition: 'Position schließen',
+                    editTransaction: 'Transaktion bearbeiten',
+                    selectCrypto: 'Kryptowährung auswählen',
+                    purchasePrice: 'Kaufpreis',
+                    quantity: 'Menge',
+                    savePosition: 'Position speichern',
+                    selectPosition: 'Position auswählen',
+                    salePrice: 'Verkaufspreis',
+                    closePositionBtn: 'Position schließen',
+                    cryptoSymbol: 'Krypto-Symbol',
+                    purchaseDate: 'Kaufdatum',
+                    saleDate: 'Verkaufsdatum',
+                    saveChanges: 'Änderungen speichern',
+                    confirmRequest: 'Anfrage bestätigen',
+                    deleteConfirmMsg: "Sind Sie sicher, dass Sie diese Transaktion löschen möchten? Diese Aktion ist unwiderruflich.",
+                    cancel: 'Abbrechen',
+                    confirm: 'Bestätigen',
+                    searchingRealTimeNews: 'Suche nach Echtzeit-Nachrichten...',
+                    latestFinancialNews: 'Neueste Finanznachrichten',
+                    error: 'Fehler',
+                    errorLoadingNews: "KI-Nachrichten konnten im Moment nicht geladen werden.",
+                    loadingCalendar: 'Kalender wird geladen...',
+                    economicCalendar: 'Wirtschaftskalender',
+                    errorLoadingCalendar: "Der Kalender konnte im Moment nicht geladen werden.",
+                    noTradesToAnalyze: "Keine geschlossenen Trades in diesem Monat zu analysieren.",
+                    monthlyReportFor: "Bericht für",
+                    noTradesThisMonth: "Keine geschlossenen Trades in diesem Monat.",
+                    termsAndConditions: "Allgemeine Geschäftsbedingungen",
+                    edit: "Bearbeiten",
+                    delete: "Löschen",
+                    converter: "Konverter",
+                    currencyConverter: "Krypto-Konverter",
+                    from: "Von",
+                    to: "Nach",
+                    amount: "Betrag",
+                    contacts: "Kontakte",
+                    sendEmail: "E-Mail senden",
+                    subject: "Betreff",
+                    message: "Nachricht",
+                    signInWithGoogle: "Mit Google anmelden",
+                    signOut: "Abmelden",
+                    welcome: "Willkommen",
+                    signingIn: "Anmelden..."
+                },
+                fr: {
+                    monthNames: ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'],
+                    dayNames: ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'],
+                    aiAnalysis: 'Analyse IA',
+                    calendar: 'Calendrier',
+                    news: 'Actualités',
+                    report: 'Rapport',
+                    summary: 'Résumé',
+                    monthActivity: "Activité du Mois",
+                    open: 'Ouvrir',
+                    close: 'Fermer',
+                    other: 'Plus',
+                    downloadCSV: 'Télécharger le rapport CSV',
+                    infoAndTerms: 'Infos & Conditions',
+                    netProfit: 'Gain Net',
+                    day: 'Jour',
+                    tickerOffline: 'Ticker indisponible hors ligne.',
+                    loadingPrices: 'Chargement des prix...',
+                    openNewPosition: 'Ouvrir une nouvelle position',
+                    closePosition: 'Fermer la position',
+                    editTransaction: 'Modifier la transaction',
+                    selectCrypto: 'Sélectionnez une crypto-monnaie',
+                    purchasePrice: "Prix d'achat",
+                    quantity: 'Quantité',
+                    savePosition: 'Enregistrer la position',
+                    selectPosition: 'Sélectionner la position',
+                    salePrice: 'Prix de vente',
+                    closePositionBtn: 'Fermer la position',
+                    cryptoSymbol: 'Symbole Crypto',
+                    purchaseDate: "Date d'achat",
+                    saleDate: 'Date de vente',
+                    saveChanges: 'Enregistrer les modifications',
+                    confirmRequest: 'Confirmer la demande',
+                    deleteConfirmMsg: "Êtes-vous sûr de vouloir supprimer cette transaction ? Cette action est irréversible.",
+                    cancel: 'Annuler',
+                    confirm: 'Confirmer',
+                    searchingRealTimeNews: 'Recherche d\'actualités en temps réel...',
+                    latestFinancialNews: 'Dernières nouvelles financières',
+                    error: 'Erreur',
+                    errorLoadingNews: "Impossible de charger les nouvelles de l'IA pour le moment.",
+                    loadingCalendar: 'Chargement du calendrier...',
+                    economicCalendar: 'Calendrier économique',
+                    errorLoadingCalendar: "Impossible de charger le calendrier pour le moment.",
+                    noTradesToAnalyze: "Aucune transaction clôturée ce mois-ci à analyser.",
+                    monthlyReportFor: "Rapport pour",
+                    noTradesThisMonth: "Aucune transaction clôturée ce mois-ci.",
+                    termsAndConditions: "Termes et Conditions",
+                    edit: "Modifier",
+                    delete: "Supprimer",
+                    converter: "Convertisseur",
+                    currencyConverter: "Convertisseur de Crypto",
+                    from: "De",
+                    to: "À",
+                    amount: "Montant",
+                    contacts: "Contacts",
+                    sendEmail: "Envoyer un e-mail",
+                    subject: "Sujet",
+                    message: "Message",
+                    signInWithGoogle: "Se connecter avec Google",
+                    signOut: "Se déconnecter",
+                    welcome: "Bienvenue",
+                    signingIn: "Connexion en cours..."
+                }
+            };
+
+            const t = (key) => {
+                return translations[state.currentLanguage]?.[key] || translations['it'][key] || key;
+            };
+            
+            // --- FIRESTORE FUNCTIONS ---
+            function setupTradesListener(userId) {
+                if (state.tradesListener) {
+                    state.tradesListener(); // Rimuove il listener precedente
+                }
+                const tradesCollection = collection(db, "users", userId, "trades");
+                state.tradesListener = onSnapshot(tradesCollection, (snapshot) => {
+                    state.trades = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    render(); // Renderizza l'intera UI quando i dati cambiano
+                });
+            }
+
+            async function addTrade(tradeData) {
+                if (!state.user) return;
+                await addDoc(collection(db, "users", state.user.uid, "trades"), tradeData);
+            }
+
+            async function updateTrade(tradeId, tradeData) {
+                if (!state.user) return;
+                const tradeRef = doc(db, "users", state.user.uid, "trades", tradeId);
+                await updateDoc(tradeRef, tradeData);
+            }
+
+            async function deleteTrade(tradeId) {
+                if (!state.user) return;
+                await deleteDoc(doc(db, "users", state.user.uid, "trades", tradeId));
+            }
+
+            // --- LOCAL SETTINGS FUNCTIONS (non per i trade) ---
+            function loadSettings() {
+                const savedSettings = localStorage.getItem('tradefolioSettings');
+                if(savedSettings) {
+                    try {
+                        const settings = JSON.parse(savedSettings);
+                        state.currentCurrency = settings.currentCurrency || 'usd';
+                        state.currentLanguage = settings.currentLanguage || 'it';
+                    } catch (e) { console.error("Could not parse settings", e); }
+                }
+            }
+            function saveSettings() {
+                const settings = { 
+                    currentCurrency: state.currentCurrency,
+                    currentLanguage: state.currentLanguage 
+                };
+                localStorage.setItem('tradefolioSettings', JSON.stringify(settings));
+            }
+            
+            // --- UTILITY FUNCTIONS ---
+            const getDaysInMonth = (year, month) => new Date(year, month + 1, 0).getDate();
+            const formatDate = (dateStr) => { if (!dateStr) return ''; const [y, m, d] = dateStr.split('-'); return `${d}/${m}/${y}`; };
+            const getCurrencySymbol = () => (state.supportedCurrencies.find(c => c.code === state.currentCurrency) || {symbol: '$'}).symbol;
+            const calculateTradeProfits = (trade) => {
+                if (trade.status !== 'closed' || !trade.salePrice) return { ...trade, netProfit: 0, percentageProfit: 0 };
+                const netProfit = (trade.salePrice - trade.purchasePrice) * trade.quantity;
+                const costBasis = trade.purchasePrice * trade.quantity;
+                const percentageProfit = costBasis !== 0 ? (netProfit / costBasis) * 100 : 0;
+                return { ...trade, netProfit, percentageProfit };
+            };
+
+            // --- UI UPDATE FUNCTIONS ---
+            function rerenderDay(dateString) {
+                const dayColumn = document.querySelector(`.day-column[data-date="${dateString}"]`);
+                if (!dayColumn) return;
+
+                const { trades } = state;
+                const currencySymbol = getCurrencySymbol();
+                const closedOnThisDay = trades.filter(t => t.saleDate === dateString);
+                const openedOnThisDay = trades.filter(t => t.purchaseDate === dateString && t.status === 'open');
+
+                const tradesHTML = `
+                    ${closedOnThisDay.map(trade => {
+                        const p = calculateTradeProfits(trade);
+                        return `<div class="trade-item bg-gray-800 flex flex-col p-2 mt-2">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <div class="font-bold text-base text-white">${trade.cryptoSymbol.toUpperCase()}</div>
+                                    <div class="text-sm mt-1">
+                                        ${p.netProfit >= 0 ? '📈' : ' '} <span class="${p.netProfit >= 0 ? 'profit' : 'loss'}">${p.netProfit.toFixed(2)} ${currencySymbol}</span>
+                                    </div>
+                                </div>
+                                <div class="text-xs text-gray-400">(${p.percentageProfit.toFixed(1)}%)</div>
+                            </div>
+                            <div class="trade-actions mt-2 self-end">
+                                <button class="action-btn bg-green-600 hover:bg-green-700" data-action="open-modal" data-mode="edit_closed" data-trade-id="${trade.id}">${t('edit')}</button>
+                                <button class="action-btn bg-red-600 hover:bg-red-700" data-action="delete-trade" data-trade-id="${trade.id}">${t('delete')}</button>
+                            </div>
+                        </div>`}).join('')}
+                    ${openedOnThisDay.map(trade => `
+                        <div class="trade-item bg-gray-700/50 flex flex-col p-2 mt-2">
+                            <div class="flex justify-between items-start">
+                                <div>
+                                    <div class="font-bold text-base text-white">${trade.cryptoSymbol.toUpperCase()}</div>
+                                    <div class="text-sm mt-1 text-gray-300">
+                                        <span>${trade.quantity} @ ${trade.purchasePrice}${currencySymbol}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="trade-actions mt-2 self-end">
+                                <button class="action-btn bg-green-600 hover:bg-green-700" data-action="open-modal" data-mode="edit_open" data-trade-id="${trade.id}">${t('edit')}</button>
+                                <button class="action-btn bg-red-600 hover:bg-red-700" data-action="delete-trade" data-trade-id="${trade.id}">${t('delete')}</button>
+                            </div>
+                        </div>`).join('')}
+                `;
+                
+                const tradeContainer = dayColumn.querySelector('.flex-grow');
+                if (tradeContainer) {
+                    tradeContainer.innerHTML = tradesHTML;
+                }
+            }
+
+            // --- RENDER FUNCTIONS (COMPONENTI SPECIFICI) ---
+
+            function render() {
+                const monthNames = translations[state.currentLanguage].monthNames;
+                document.documentElement.lang = state.currentLanguage;
+                document.getElementById('header-actions').innerHTML = renderHeaderActions();
+                document.getElementById('bottom-nav-content').innerHTML = renderBottomNav();
+                document.getElementById('ticker-container').innerHTML = renderTicker();
+                document.getElementById('current-month-year').textContent = `${monthNames[state.currentMonthIndex]} ${state.currentYear}`;
+                document.getElementById('calendar-container').innerHTML = renderCalendar();
+                document.getElementById('summary-bubble').innerHTML = renderSummaryBubble();
+                document.getElementById('modals-container').innerHTML = renderAllModals();
+                const navCloseBtn = document.getElementById('nav-close-btn');
+                if(navCloseBtn) {
+                    navCloseBtn.disabled = state.trades.filter(t => t.status === 'open').length === 0;
+                }
+                renderSideMenu();
+                renderChart(); 
+            }
+
+            function renderHeaderActions() {
+                return `
+                    <button class="flex flex-col items-center w-16 text-gray-300 hover:text-white transition-colors" data-action="fetch-ai-analysis" aria-label="${t('aiAnalysis')}">
+                       <div class="h-6 w-6 flex items-center justify-center">
+                            <span class="text-xl">💡</span>
+                       </div>
+                       <span class="text-xs mt-1">A.I</span>
+                    </button>
+                    <button class="flex flex-col items-center w-16 text-gray-300 hover:text-white transition-colors" data-action="fetch-economic-calendar" aria-label="${t('calendar')}">
+                       <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 256 256"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM208,48V72H48V48ZM48,208V88H208V208Z"></path></svg>
+                       <span class="text-xs mt-1">${t('calendar')}</span>
+                    </button>
+                    <button class="flex flex-col items-center w-16 text-gray-300 hover:text-white transition-colors" data-action="fetch-ai-news" aria-label="${t('news')}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 256 256"><path d="M208,24H72A16,16,0,0,0,56,40V216a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V40A16,16,0,0,0,208,24Zm0,192H72V40H208V216ZM40,56H24A16,16,0,0,0,8,72V200a16,16,0,0,0,16,16H40a8,8,0,0,0,0-16H32V72H40a8,8,0,0,0,0-16ZM104,80a8,8,0,0,1,8-8h80a8,8,0,0,1,0,16H112A8,8,0,0,1,104,80Zm88,40H112a8,8,0,0,0,0,16h80a8,8,0,0,0,0-16Zm0,48H112a8,8,0,0,0,0,16h80a8,8,0,0,0,0-16Z"></path></svg>
+                        <span class="text-xs mt-1">${t('news')}</span>
+                    </button>
+                    <button class="flex flex-col items-center w-16 text-gray-300 hover:text-white transition-colors" data-action="generate-monthly-report" aria-label="${t('report')}">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 256 256"><path d="M224,128a96,96,0,1,1-96-96A96,96,0,0,1,224,128ZM128,56v96h96A72.08,72.08,0,0,0,128,56Z"></path></svg>
+                        <span class="text-xs mt-1">${t('report')}</span>
+                    </button>
+                `;
+            }
+
+            function renderBottomNav() {
+                return `
+                    <button data-action="open-modal" data-mode="open" class="flex flex-col items-center justify-center h-full w-1/4 text-green-400 hover:text-green-300 transition-colors">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3m0 0v3m0-3h3m-3 0H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span class="text-xs font-medium">${t('open')}</span>
+                    </button>
+                    
+                    <div id="summary-bubble" class="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 z-10"></div>
+
+                    <button data-action="open-modal" data-mode="close" id="nav-close-btn" class="flex flex-col items-center justify-center h-full w-1/4 text-red-400 hover:text-red-300 transition-colors disabled:text-gray-500 disabled:cursor-not-allowed">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 12H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                        <span class="text-xs font-medium">${t('close')}</span>
+                    </button>
+                `;
+            }
+
+            function renderTicker() {
+                if (!navigator.onLine && state.tickerData.length === 0) {
+                     return `<div class="ticker-wrap"><div class="ticker-item">${t('tickerOffline')}</div></div>`;
+                }
+                if (state.tickerData.length === 0) return `<div class="ticker-wrap"><div class="ticker-item">${t('loadingPrices')}</div></div>`;
+                const currencySymbol = getCurrencySymbol();
+                const items = state.tickerData.map(coin => `
+                    <span class="ticker-item">
+                        <img src="${coin.image}" alt="${coin.name}" class="w-4 h-4"/>
+                        ${coin.name}: <span class="${coin.price_change_percentage_24h >= 0 ? 'text-green-400' : 'text-red-400'}">
+                            ${currencySymbol}${coin.current_price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                    </span>
+                `).join('');
+                return `<div class="ticker-wrap"><div class="ticker-move">${items}${items}</div></div>`;
+            }
+            
+            function renderSummaryBubble() {
+                const { currentYear, currentMonthIndex, trades } = state;
+                const monthKey = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`;
+                const tradesInMonth = trades.filter(t => t.status === 'closed' && t.saleDate && t.saleDate.startsWith(monthKey));
+                const monthNetProfit = tradesInMonth.reduce((acc, t) => acc + (calculateTradeProfits(t).netProfit || 0), 0);
+                
+                return `
+                    <div class="bg-gray-900 rounded-full w-32 h-16 flex flex-col justify-center items-center border-2 border-gray-700">
+                        <span class="text-xs text-gray-400">${t('summary')}</span>
+                        <span class="font-bold text-sm ${monthNetProfit >= 0 ? 'profit' : 'loss'}">${monthNetProfit.toFixed(2)} ${getCurrencySymbol()}</span>
+                    </div>
+                `;
+            }
+
+            function renderCalendar() {
+                const { currentYear, currentMonthIndex } = state;
+                const monthNames = translations[state.currentLanguage].monthNames;
+                const dayNames = translations[state.currentLanguage].dayNames;
+                const daysInMonth = getDaysInMonth(currentYear, currentMonthIndex);
+                
+                const chartHTML = `<div class="w-full h-48 md:h-64 mb-4"><canvas id="profitChart"></canvas></div>`;
+                let columnsHTML = '';
+                
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const date = new Date(currentYear, currentMonthIndex, day);
+                    const dayOfWeek = date.getDay();
+                    const dayName = dayNames[dayOfWeek];
+                    const isSunday = dayOfWeek === 0;
+                    const sundayClass = isSunday ? 'border-red-500/50' : '';
+
+                    const dateString = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    
+                    columnsHTML += `
+                        <div class="day-column ${sundayClass}" data-date="${dateString}">
+                            <div class="flex justify-between items-baseline pb-2 border-b border-gray-600">
+                                <div class="font-bold text-xl text-white">${day}</div>
+                                <div class="text-sm text-gray-400">${dayName}</div>
+                            </div>
+                            <div class="flex-grow"></div>
+                        </div>
+                    `;
+                }
+
+                const activityHTML = `
+                    <div class="bg-gray-700 p-4 rounded-xl shadow-lg w-full text-gray-100">
+                        <div class="flex justify-between items-center mb-3 border-b border-gray-600 pb-2">
+                            <h4 class="text-md font-bold text-white">${t('monthActivity')}</h4>
+                        </div>
+                        <div class="horizontal-calendar-wrapper">
+                            <div class="horizontal-calendar-content">
+                                ${columnsHTML}
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                const summaryAndChartHTML = `
+                    <div class="bg-gray-700 p-4 rounded-xl shadow-lg w-full text-gray-100 mb-4">
+                        ${chartHTML}
+                    </div>
+                `;
+                
+                setTimeout(() => {
+                     for (let day = 1; day <= daysInMonth; day++) {
+                        const dateString = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        rerenderDay(dateString);
+                    }
+                }, 0);
+
+                return summaryAndChartHTML + activityHTML;
+            }
+
+            function renderChart() {
+                const chartCanvas = document.getElementById('profitChart');
+                if (!chartCanvas) return;
+                const ctx = chartCanvas.getContext('2d');
+                
+                const { currentYear, currentMonthIndex, trades } = state;
+                const currencySymbol = getCurrencySymbol();
+                const daysInMonth = getDaysInMonth(currentYear, currentMonthIndex);
+                const closedTrades = trades.filter(t => t.status === 'closed');
+                const dailySummaries = new Map();
+                closedTrades.forEach(trade => {
+                    const saleDate = trade.saleDate;
+                    if (!saleDate || !saleDate.startsWith(`${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`)) return;
+                    if (!dailySummaries.has(saleDate)) { dailySummaries.set(saleDate, { netProfit: 0 }); }
+                    dailySummaries.get(saleDate).netProfit += (calculateTradeProfits(trade).netProfit || 0);
+                });
+                const chartData = Array.from({ length: daysInMonth }, (_, day) => {
+                    const dateString = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}-${String(day + 1).padStart(2, '0')}`;
+                    return dailySummaries.get(dateString)?.netProfit || 0;
+                });
+                const chartLabels = Array.from({ length: daysInMonth }, (_, day) => day + 1);
+
+                const gradient = ctx.createLinearGradient(0, 0, 0, chartCanvas.offsetHeight);
+                gradient.addColorStop(0, 'rgba(251, 191, 36, 1)'); // Giallo
+                gradient.addColorStop(1, 'rgba(239, 68, 68, 1)');   // Rosso
+
+                if (profitChart) { profitChart.destroy(); }
+                
+                profitChart = new Chart(ctx, {
+                    type: 'line',
+                    data: { 
+                        labels: chartLabels, 
+                        datasets: [{ 
+                            label: t('netProfit'), 
+                            data: chartData, 
+                            borderColor: gradient,
+                            backgroundColor: 'rgba(251, 191, 36, 0.1)', 
+                            fill: true, 
+                            tension: 0.4, 
+                            borderWidth: 2, 
+                            pointRadius: 2, 
+                            pointBackgroundColor: '#FBBF24' 
+                        }] 
+                    },
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        scales: { 
+                            y: { ticks: { color: '#9CA3AF', font: { size: 10 } }, grid: { color: '#4b5563' } }, 
+                            x: { ticks: { color: '#9CA3AF', font: { size: 10 } }, grid: { display: false } } 
+                        }, 
+                        plugins: { 
+                            legend: { display: false }, 
+                            tooltip: { 
+                                backgroundColor: '#1f2937', 
+                                titleColor: '#F3F4F6', 
+                                bodyColor: '#D1D5DB', 
+                                callbacks: { label: (c) => `${t('day')} ${c.label}: ${c.raw.toFixed(2)} ${currencySymbol}` } 
+                            } 
+                        } 
+                    }
+                });
+            }
+            
+            function renderAllModals() {
+                let html = '';
+                if (state.modal.isOpen) html += renderTradeModal();
+                if (state.confirmationModal.isOpen) html += renderConfirmationModal();
+                if (state.infoModal.isOpen) html += renderInfoModal();
+                if (state.converterModal.isOpen) html += renderConverterModal();
+                if (state.contactModal.isOpen) html += renderContactModal();
+                return html;
+            }
+
+            function renderTradeModal() {
+                const { mode, data } = state.modal;
+                const currencySymbol = getCurrencySymbol();
+                let content = '';
+                const today = new Date().toISOString().split('T')[0];
+
+                if (mode === 'open') {
+                    const cryptoOptions = state.tickerData.map(coin => `<option value="${coin.symbol.toUpperCase()}">${coin.name} (${coin.symbol.toUpperCase()})</option>`).join('');
+                    content = `<h2 class="text-lg font-bold mb-3 text-white">${t('openNewPosition')}</h2>
+                               <div class="space-y-3">
+                                   <input id="open-date" type="date" value="${today}" required class="modal-input" />
+                                   <select id="open-crypto-select" required class="modal-input">
+                                       <option value="" disabled selected>${t('selectCrypto')}</option>
+                                       ${cryptoOptions}
+                                   </select>
+                                   <input id="open-price" type="number" step="any" placeholder="${t('purchasePrice')} (${currencySymbol})" required class="modal-input" />
+                                   <input id="open-quantity" type="number" step="any" placeholder="${t('quantity')}" required class="modal-input" />
+                               </div>
+                               <div class="flex justify-end mt-4">
+                                   <button type="submit" class="modal-btn bg-yellow-500 hover:bg-yellow-600 text-black">${t('savePosition')}</button>
+                               </div>`;
+                } else if (mode === 'close') {
+                    const openPositions = state.trades.filter(t => t.status === 'open');
+                    content = `<h2 class="text-lg font-bold mb-3 text-white">${t('closePosition')}</h2><div class="space-y-3"><select id="close-trade-select" required class="modal-input"><option value="">${t('selectPosition')}</option>${openPositions.map(t => `<option value="${t.id}">${t.cryptoSymbol.toUpperCase()} del ${formatDate(t.purchaseDate)}</option>`).join('')}</select><input id="close-date" type="date" value="${today}" required class="modal-input" /><input id="close-price" type="number" step="any" placeholder="${t('salePrice')} (${currencySymbol})" required class="modal-input" /></div><div class="flex justify-end mt-4"><button type="submit" class="modal-btn bg-red-600 hover:bg-red-700 text-white">${t('closePositionBtn')}</button></div>`;
+                } else if (mode === 'edit_open' || mode === 'edit_closed') {
+                    const trade = state.trades.find(t => t.id === data.tradeId);
+                    content = `<h2 class="text-lg font-bold mb-3 text-white">${t('editTransaction')}</h2><div class="space-y-3 text-sm"><label class="block">${t('cryptoSymbol')} <input id="edit-crypto-symbol" type="text" value="${trade.cryptoSymbol}" required class="modal-input mt-1" /></label><label class="block">${t('purchaseDate')} <input id="edit-purchase-date" type="date" value="${trade.purchaseDate}" class="modal-input mt-1" /></label>${mode === 'edit_closed' ? `<label class="block">${t('saleDate')} <input id="edit-sale-date" type="date" value="${trade.saleDate}" class="modal-input mt-1" /></label>` : ''}<label class="block">${t('purchasePrice')} (${currencySymbol})<input id="edit-purchase-price" type="number" step="any" value="${trade.purchasePrice}" class="modal-input mt-1" /></label>${mode === 'edit_closed' ? `<label class="block">${t('salePrice')} (${currencySymbol})<input id="edit-sale-price" type="number" step="any" value="${trade.salePrice}" class="modal-input mt-1" /></label>` : ''}<label class="block">${t('quantity')} <input id="edit-quantity" type="number" step="any" value="${trade.quantity}" class="modal-input mt-1" /></label></div><div class="flex justify-end items-center mt-4"><button type="submit" class="modal-btn bg-yellow-500 hover:bg-yellow-600 text-black">${t('saveChanges')}</button></div>`;
+                }
+                return `<div class="modal-overlay"><div class="modal-content max-w-md"><button class="absolute top-3 right-4 text-3xl font-light text-gray-400 hover:text-white" data-action="close-modal">&times;</button><form id="trade-form" class="modal-body">${content}</form></div></div>`;
+            }
+
+            function renderConfirmationModal() {
+                return `<div class="modal-overlay"><div class="modal-content max-w-md"><h2 class="text-xl font-bold mb-4 text-white">${t('confirmRequest')}</h2><p class="text-gray-300 mb-6">${t('deleteConfirmMsg')}</p><div class="flex justify-end gap-4"><button class="modal-btn bg-gray-600 hover:bg-gray-500" data-action="cancel-delete">${t('cancel')}</button><button class="modal-btn bg-red-600 hover:bg-red-700" data-action="confirm-delete">${t('confirm')}</button></div></div></div>`;
+            }
+
+            function renderInfoModal() {
+                const { title, content, isLoading } = state.infoModal;
+                let modalBody;
+                if (isLoading) {
+                    modalBody = `<div class="flex justify-center items-center h-48"><div class="loader"></div></div>`;
+                } else {
+                    modalBody = `<div class="text-sm leading-relaxed">${content || ""}</div>`;
+                }
+
+                const isNewsOrReportModal = title === t('latestFinancialNews') || title.startsWith(t('monthlyReportFor')) || title.startsWith(t('aiAnalysis')) || title.startsWith(t("termsAndConditions")) || title.startsWith(t("economicCalendar"));
+                const modalWidthClass = isNewsOrReportModal ? 'max-w-2xl' : 'max-w-md';
+
+                return `<div class="modal-overlay">
+                            <div class="modal-content ${modalWidthClass}">
+                                <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-700">
+                                    <h2 class="text-xl font-bold text-white">${title}</h2>
+                                    <button class="text-3xl font-light text-gray-400 hover:text-white" data-action="close-info-modal">&times;</button>
+                                </div>
+                                <div class="modal-body">${modalBody}</div>
+                            </div>
+                        </div>`;
+            }
+
+            function renderConverterModal() {
+                const cryptoOptions = state.tickerData.map(coin => `<option value="${coin.id}">${coin.name} (${coin.symbol.toUpperCase()})</option>`).join('');
+
+                return `
+                    <div class="modal-overlay">
+                        <div class="modal-content max-w-lg">
+                            <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-700">
+                                <h2 class="text-xl font-bold text-white">${t('currencyConverter')}</h2>
+                                <button class="text-3xl font-light text-gray-400 hover:text-white" data-action="close-converter-modal">&times;</button>
+                            </div>
+                            <div id="converter-body" class="modal-body space-y-4">
+                                <!-- From Currency -->
+                                <div class="p-3 bg-gray-800 rounded-lg">
+                                    <label class="text-sm text-gray-400">${t('from')}</label>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <input id="converter-from-amount" type="number" placeholder="1.0" class="modal-input bg-transparent border-0 p-2 text-2xl w-1/2" value="1">
+                                        <select id="converter-from-currency" class="native-hidden-select w-1/2 bg-gray-700 border-none text-white text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block p-2.5 cursor-pointer">
+                                            ${cryptoOptions}
+                                        </select>
+                                    </div>
+                                </div>
+
+                                <!-- To Currency -->
+                                <div class="p-3 bg-gray-800 rounded-lg">
+                                    <label class="text-sm text-gray-400">${t('to')}</label>
+                                    <div class="flex items-center gap-2 mt-1">
+                                        <input id="converter-to-amount" type="number" placeholder="0.0" class="modal-input bg-transparent border-0 p-2 text-2xl w-1/2">
+                                        <select id="converter-to-currency" class="native-hidden-select w-1/2 bg-gray-700 border-none text-white text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block p-2.5 cursor-pointer">
+                                            ${cryptoOptions}
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            function renderContactModal() {
+                return `
+                    <div class="modal-overlay">
+                        <div class="modal-content max-w-lg">
+                            <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-700">
+                                <h2 class="text-xl font-bold text-white">${t('contacts')}</h2>
+                                <button class="text-3xl font-light text-gray-400 hover:text-white" data-action="close-contact-modal">&times;</button>
+                            </div>
+                            <div id="contact-form" class="modal-body space-y-4">
+                                <div>
+                                    <label for="contact-subject" class="block mb-2 text-sm font-medium text-gray-300">${t('subject')}</label>
+                                    <input type="text" id="contact-subject" class="modal-input" placeholder="Informazioni su Tradefolio">
+                                </div>
+                                <div>
+                                    <label for="contact-message" class="block mb-2 text-sm font-medium text-gray-300">${t('message')}</label>
+                                    <textarea id="contact-message" rows="6" class="modal-input" placeholder="Scrivi qui il tuo messaggio..."></textarea>
+                                </div>
+                                <div class="flex justify-end mt-4">
+                                    <button data-action="send-email" class="modal-btn bg-yellow-500 hover:bg-yellow-600 text-black">${t('sendEmail')}</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            function renderSideMenu() {
+                const menuContainer = document.getElementById('side-menu');
+                if (!menuContainer) return;
+
+                const currencyOptionsHTML = state.supportedCurrencies
+                    .map(c => `<option value="${c.code}" ${c.code === state.currentCurrency ? 'selected' : ''}>${c.code.toUpperCase()}</option>`)
+                    .join('');
+                
+                const languageOptionsHTML = state.supportedLanguages
+                    .map(l => `<option value="${l.code}" ${l.code === state.currentLanguage ? 'selected' : ''}>${l.shortName}</option>`)
+                    .join('');
+                
+                const currentSymbol = getCurrencySymbol();
+
+                let userSection = '';
+                if (state.user) {
+                    userSection = `
+                        <div class="mt-auto pt-4 border-t border-gray-700">
+                            <div class="flex items-center gap-3 mb-3">
+                                <img src="${state.user.photoURL || 'https://placehold.co/40x40/6b7280/ffffff?text=' + state.user.displayName.charAt(0)}" alt="User" class="w-10 h-10 rounded-full">
+                                <div>
+                                    <p class="font-semibold text-white">${state.user.displayName}</p>
+                                    <p class="text-xs text-gray-400">${state.user.email}</p>
+                                </div>
+                            </div>
+                            <button data-action="sign-out" class="w-full flex items-center justify-center gap-2 p-2 rounded-lg text-red-400 hover:bg-red-900/50 transition-colors">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd" /></svg>
+                                <span>${t('signOut')}</span>
+                            </button>
+                        </div>
+                    `;
+                }
+
+                menuContainer.innerHTML = `
+                    <div class="flex justify-between items-center pb-4 mb-4 border-b border-gray-700">
+                        <h2 class="text-xl font-poppins"><span class="text-white font-bold">${t('other')}</span></h2>
+                        <button data-action="toggle-menu" class="p-2 rounded-md text-gray-400 hover:text-white">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                    </div>
+                    <nav class="flex flex-col gap-2 flex-grow">
+                        <div class="flex items-center gap-3 p-2 rounded-lg text-gray-200 w-1/2 text-left bg-gray-800/50">
+                            <div class="h-6 w-6 flex-shrink-0 flex items-center justify-center bg-gray-600 rounded-full">
+                                <span class="text-white font-bold text-sm">${currentSymbol}</span>
+                            </div>
+                            <select id="currency-select" data-action="change-currency" class="native-hidden-select w-full bg-gray-700 border-none text-white text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block p-2 cursor-pointer">
+                                ${currencyOptionsHTML}
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-3 p-2 rounded-lg text-gray-200 w-1/2 text-left bg-gray-800/50">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"></circle>
+                                <line x1="2" y1="12" x2="22" y2="12"></line>
+                                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                                <path d="M9.5 7L7.5 12l2 5"></path>
+                                <path d="M14.5 7l2 5-2 5"></path>
+                            </svg>
+                            <select id="language-select" data-action="change-language" class="native-hidden-select w-full bg-gray-700 border-none text-white text-sm rounded-lg focus:ring-yellow-500 focus:border-yellow-500 block p-2 cursor-pointer">
+                                ${languageOptionsHTML}
+                            </select>
+                        </div>
+                        <button data-action="open-converter" class="flex items-center gap-3 p-2 rounded-lg text-gray-200 hover:bg-gray-700 transition-colors w-full text-left">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 256 256"><path d="M184,24H72A24,24,0,0,0,48,48V208a24,24,0,0,0,24,24H184a24,24,0,0,0,24-24V48A24,24,0,0,0,184,24Zm8,184a8,8,0,0,1-8,8H72a8,8,0,0,1-8-8V48a8,8,0,0,1,8-8H184a8,8,0,0,1,8,8ZM100,124a12,12,0,1,1,12,12A12,12,0,0,1,100,124Zm44-12a12,12,0,1,1-12-12A12,12,0,0,1,144,112Zm-44,44a12,12,0,1,1,12,12A12,12,0,0,1,100,168Zm44-12a12,12,0,1,1-12-12A12,12,0,0,1,144,156Zm-20-76H100a8,8,0,0,1,0-16h24a8,8,0,0,1,0,16Z"></path></svg>
+                            <span class="font-medium">${t('converter')}</span>
+                        </button>
+                        <button data-action="download-csv" class="flex items-center gap-3 p-2 rounded-lg text-gray-200 hover:bg-gray-700 transition-colors w-full text-left">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 256 256"><path d="M208,88H152V32a8,8,0,0,0-16,0V88H80a8,8,0,0,0-5.66,13.66l64,64a8,8,0,0,0,11.32,0l64-64A8,8,0,0,0,208,88ZM216,184H40a8,8,0,0,0,0,16H216a8,8,0,0,0,0-16Z"></path></svg>
+                            <span class="font-medium">${t('downloadCSV')}</span>
+                        </button>
+                        <button data-action="show-info" class="flex items-center gap-3 p-2 rounded-lg text-gray-200 hover:bg-gray-700 transition-colors w-full text-left">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 256 256"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,16,0v40A8,8,0,0,1,144,176ZM112,88a12,12,0,1,1,12,12A12,12,0,0,1,112,88Z"></path></svg>
+                            <span class="font-medium">${t('infoAndTerms')}</span>
+                        </button>
+                        <button data-action="open-contact" class="flex items-center gap-3 p-2 rounded-lg text-gray-200 hover:bg-gray-700 transition-colors w-full text-left">
+                            <span class="text-xl h-6 w-6 flex items-center justify-center">✉️</span>
+                            <span class="font-medium">${t('contacts')}</span>
+                        </button>
+                    </nav>
+                    ${userSection}
+                `;
+            }
+
+            // --- EVENT HANDLERS ---
+            document.getElementById('prev-year-btn').addEventListener('click', () => { state.currentYear--; render(); });
+            document.getElementById('next-year-btn').addEventListener('click', () => { state.currentYear++; render(); });
+            document.getElementById('prev-month-btn').addEventListener('click', () => { if (state.currentMonthIndex === 0) { state.currentYear--; state.currentMonthIndex = 11; } else { state.currentMonthIndex--; } render(); });
+            document.getElementById('next-month-btn').addEventListener('click', () => { if (state.currentMonthIndex === 11) { state.currentYear++; state.currentMonthIndex = 0; } else { state.currentMonthIndex++; } render(); });
+            
+            document.body.addEventListener('click', (e) => {
+                const isMenuOverlay = e.target.id === 'menu-overlay';
+                if (isMenuOverlay) {
+                    toggleMenu(false);
+                    return;
+                }
+
+                if (e.target.classList.contains('modal-overlay')) {
+                    state.modal.isOpen = false;
+                    state.confirmationModal.isOpen = false;
+                    state.converterModal.isOpen = false;
+                    state.contactModal.isOpen = false;
+                    if (!state.infoModal.isLoading) state.infoModal.isOpen = false;
+                    document.getElementById('modals-container').innerHTML = renderAllModals();
+                    return;
+                }
+                
+                const target = e.target.closest('[data-action]');
+                if (!target) return;
+                
+                const action = target.dataset.action;
+                const { mode, tradeId } = target.dataset;
+
+                switch(action) {
+                    case 'toggle-menu':
+                        toggleMenu();
+                        break;
+                    case 'sign-out':
+                        signOut(auth);
+                        break;
+                    case 'open-modal':
+                        state.modal = { isOpen: true, mode, data: { tradeId } };
+                        document.getElementById('modals-container').innerHTML = renderAllModals();
+                        break;
+                    case 'delete-trade':
+                        state.confirmationModal = { isOpen: true, message: t('deleteConfirmMsg'), onConfirm: () => deleteTrade(tradeId) };
+                        document.getElementById('modals-container').innerHTML = renderAllModals();
+                        break;
+                    case 'confirm-delete': 
+                        if (state.confirmationModal.onConfirm) state.confirmationModal.onConfirm();
+                        state.confirmationModal.isOpen = false;
+                        document.getElementById('modals-container').innerHTML = renderAllModals();
+                        break;
+                    case 'close-modal':
+                    case 'cancel-delete':
+                    case 'close-info-modal':
+                    case 'close-converter-modal':
+                    case 'close-contact-modal':
+                        state.modal.isOpen = false;
+                        state.confirmationModal.isOpen = false;
+                        state.converterModal.isOpen = false;
+                        state.contactModal.isOpen = false;
+                        if (!state.infoModal.isLoading) state.infoModal.isOpen = false;
+                        document.getElementById('modals-container').innerHTML = renderAllModals();
+                        break;
+                    case 'open-converter':
+                        state.converterModal.isOpen = true;
+                        document.getElementById('modals-container').innerHTML = renderAllModals();
+                        if (state.tickerData.length > 1) {
+                            document.getElementById('converter-from-currency').value = state.tickerData[0].id;
+                            document.getElementById('converter-to-currency').value = state.tickerData[1].id;
+                            handleConversion();
+                        }
+                        toggleMenu(false);
+                        break;
+                    case 'open-contact':
+                        state.contactModal.isOpen = true;
+                        document.getElementById('modals-container').innerHTML = renderAllModals();
+                        toggleMenu(false);
+                        break;
+                    case 'send-email':
+                        handleSendEmail();
+                        break;
+                    case 'generate-monthly-report': handleGenerateMonthlyReport(); break;
+                    case 'fetch-ai-news': handleFetchAiNews(); break;
+                    case 'download-csv': 
+                        handleDownloadCsv(); 
+                        toggleMenu(false);
+                        break;
+                    case 'fetch-economic-calendar': handleFetchEconomicCalendar(); break;
+                    case 'fetch-ai-analysis': handleFetchAiAnalysis(); break;
+                    case 'show-info': 
+                        handleShowInfo();
+                        toggleMenu(false);
+                        break;
+                }
+            });
+
+            document.body.addEventListener('change', (e) => {
+                const currencyTarget = e.target.closest('[data-action="change-currency"]');
+                if (currencyTarget) {
+                    const currency = currencyTarget.value;
+                    if (currency && currency !== state.currentCurrency) {
+                        state.currentCurrency = currency;
+                        saveSettings();
+                        fetchTickerData().then(render);
+                        toggleMenu(false);
+                    }
+                }
+
+                const langTarget = e.target.closest('[data-action="change-language"]');
+                if (langTarget) {
+                    const lang = langTarget.value;
+                    if (lang && lang !== state.currentLanguage) {
+                        state.currentLanguage = lang;
+                        saveSettings();
+                        render();
+                        toggleMenu(false);
+                    }
+                }
+                
+                if (e.target.closest('#converter-body')) {
+                    handleConversion(e);
+                }
+            });
+
+            document.body.addEventListener('input', (e) => {
+                if (e.target.closest('#converter-body')) {
+                    handleConversion(e);
+                }
+            });
+            
+            document.body.addEventListener('submit', async (e) => {
+                if (e.target.id !== 'trade-form') return;
+                e.preventDefault();
+                const { mode, data } = state.modal;
+
+                if (mode === 'open') {
+                    const newTrade = { 
+                        purchaseDate: document.getElementById('open-date').value, 
+                        purchasePrice: parseFloat(document.getElementById('open-price').value), 
+                        quantity: parseFloat(document.getElementById('open-quantity').value), 
+                        status: 'open', 
+                        cryptoSymbol: document.getElementById('open-crypto-select').value 
+                    };
+                    if(newTrade.purchaseDate && !isNaN(newTrade.purchasePrice) && !isNaN(newTrade.quantity) && newTrade.cryptoSymbol) {
+                        await addTrade(newTrade);
+                    }
+                } else if (mode === 'close') {
+                    const tradeId = document.getElementById('close-trade-select').value;
+                    if (tradeId) {
+                        const updatedData = {
+                            saleDate: document.getElementById('close-date').value,
+                            salePrice: parseFloat(document.getElementById('close-price').value),
+                            status: 'closed'
+                        };
+                        await updateTrade(tradeId, updatedData);
+                    }
+                } else if (mode === 'edit_open' || mode === 'edit_closed') {
+                    const tradeId = data.tradeId;
+                    const updatedData = {
+                        purchaseDate: document.getElementById('edit-purchase-date').value,
+                        purchasePrice: parseFloat(document.getElementById('edit-purchase-price').value),
+                        quantity: parseFloat(document.getElementById('edit-quantity').value),
+                        cryptoSymbol: document.getElementById('edit-crypto-symbol').value.trim().toUpperCase(),
+                    };
+                    if (mode === 'edit_closed') {
+                        updatedData.saleDate = document.getElementById('edit-sale-date').value;
+                        updatedData.salePrice = parseFloat(document.getElementById('edit-sale-price').value);
+                    }
+                    await updateTrade(tradeId, updatedData);
+                }
+                
+                state.modal.isOpen = false;
+                document.getElementById('modals-container').innerHTML = renderAllModals();
+            });
+
+            function toggleMenu(forceState) {
+                state.isMenuOpen = typeof forceState === 'boolean' ? forceState : !state.isMenuOpen;
+                const menu = document.getElementById('side-menu');
+                const overlay = document.getElementById('menu-overlay');
+                if (menu && overlay) {
+                    menu.classList.toggle('open', state.isMenuOpen);
+                    overlay.classList.toggle('open', state.isMenuOpen);
+                }
+            }
+
+            function handleGenerateMonthlyReport() {
+                const monthNames = translations[state.currentLanguage].monthNames;
+                state.infoModal = { isOpen: true, title: `${t('monthlyReportFor')} ${monthNames[state.currentMonthIndex]} ${state.currentYear}`, content: 'Generazione report...', isLoading: true };
+                document.getElementById('modals-container').innerHTML = renderAllModals();
+
+                const { currentYear, currentMonthIndex, trades } = state;
+                const currencySymbol = getCurrencySymbol();
+                const monthKey = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`;
+                const tradesInMonth = trades
+                    .filter(t => t.status === 'closed' && t.saleDate && t.saleDate.startsWith(monthKey))
+                    .map(calculateTradeProfits);
+
+                if (tradesInMonth.length === 0) {
+                    state.infoModal = { isOpen: true, title: `${t('monthlyReportFor')} ${monthNames[currentMonthIndex]} ${state.currentYear}`, content: `<p>${t('noTradesThisMonth')}</p>`, isLoading: false };
+                    document.getElementById('modals-container').innerHTML = renderAllModals();
+                    return;
+                }
+
+                const totalProfit = tradesInMonth.reduce((sum, t) => sum + t.netProfit, 0);
+                const totalInvestment = tradesInMonth.reduce((sum, t) => sum + (t.purchasePrice * t.quantity), 0);
+                const roi = totalInvestment > 0 ? (totalProfit / totalInvestment) * 100 : 0;
+                const winningTrades = tradesInMonth.filter(t => t.netProfit > 0);
+                const losingTrades = tradesInMonth.filter(t => t.netProfit <= 0);
+                const winRate = tradesInMonth.length > 0 ? (winningTrades.length / tradesInMonth.length) * 100 : 0;
+                
+                let bestTrade = winningTrades.length > 0 ? winningTrades.reduce((best, current) => current.netProfit > best.netProfit ? current : best) : null;
+                let worstTrade = losingTrades.length > 0 ? losingTrades.reduce((worst, current) => current.netProfit < worst.netProfit ? current : worst) : null;
+
+                let reportText = `<div class="whitespace-pre-wrap">Riepilogo Performance
+----------------------------
+- Profitto/Perdita Totale: ${totalProfit.toFixed(2)} ${currencySymbol}
+- ROI (Ritorno sull'investimento): ${roi.toFixed(2)}%
+- Operazioni Totali: ${tradesInMonth.length}
+- Operazioni in Profitto: ${winningTrades.length} (${winRate.toFixed(1)}%)
+- Operazioni in Perdita: ${losingTrades.length}
+`;
+                if (bestTrade) {
+                    reportText += `
+Miglior Trade
+- Crypto: ${bestTrade.cryptoSymbol.toUpperCase()}
+- Profitto: +${bestTrade.netProfit.toFixed(2)} ${currencySymbol} (${bestTrade.percentageProfit.toFixed(1)}%)`;
+                }
+                if (worstTrade) {
+                     reportText += `
+
+Peggior Trade
+- Crypto: ${worstTrade.cryptoSymbol.toUpperCase()}
+- Perdita: ${worstTrade.netProfit.toFixed(2)} ${currencySymbol} (${worstTrade.percentageProfit.toFixed(1)}%)`;
+                }
+                reportText += `</div>`;
+
+                state.infoModal = { isOpen: true, title: `${t('monthlyReportFor')} ${monthNames[currentMonthIndex]} ${state.currentYear}`, content: reportText, isLoading: false };
+                document.getElementById('modals-container').innerHTML = renderAllModals();
+            }
+            
+            // --- CSV DOWNLOAD FUNCTION ---
+            function handleDownloadCsv() {
+                const { currentYear, currentMonthIndex, trades } = state;
+                const monthNames = translations[state.currentLanguage].monthNames;
+                const currencySymbol = getCurrencySymbol();
+                const monthKey = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`;
+                const tradesInMonth = trades.filter(t => t.purchaseDate.startsWith(monthKey) || (t.saleDate && t.saleDate.startsWith(monthKey)));
+
+                if (tradesInMonth.length === 0) {
+                    console.log("Nessun dato da esportare per questo mese.");
+                    return;
+                }
+
+                const headers = ['ID', 'Simbolo', 'Data Acquisto', `Prezzo Acquisto (${currencySymbol})`, 'Quantità', 'Data Vendita', `Prezzo Vendita (${currencySymbol})`, 'Stato', `Profitto Netto (${currencySymbol})`];
+                
+                const rows = tradesInMonth.map(trade => {
+                    const p = calculateTradeProfits(trade);
+                    return [
+                        trade.id,
+                        trade.cryptoSymbol,
+                        trade.purchaseDate,
+                        trade.purchasePrice,
+                        trade.quantity,
+                        trade.saleDate || '',
+                        trade.salePrice || '',
+                        trade.status,
+                        p.netProfit.toFixed(2)
+                    ].join(',');
+                });
+
+                const csvContent = [headers.join(','), ...rows].join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                
+                const link = document.createElement("a");
+                const url = URL.createObjectURL(blob);
+                const fileName = `Tradefolio_Report_${monthNames[currentMonthIndex]}_${currentYear}.csv`;
+                link.setAttribute("download", fileName);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
+
+            // --- AI NEWS FUNCTIONS ---
+            function formatNews(newsItems) {
+                if (!newsItems || newsItems.length === 0) {
+                    return '<p class="text-gray-400">Nessuna notizia disponibile al momento.</p>';
+                }
+
+                const groupedNews = newsItems.reduce((acc, item) => {
+                    const category = item.category || 'Varie';
+                    if (!acc[category]) {
+                        acc[category] = [];
+                    }
+                    acc[category].push(item);
+                    return acc;
+                }, {});
+
+                let html = '';
+                for (const category in groupedNews) {
+                    html += `<div class="mb-6">
+                                <h3 class="text-lg font-semibold text-yellow-400 mb-3 border-b border-gray-700 pb-2">${category}</h3>
+                                <div class="space-y-4">`;
+                    
+                    groupedNews[category].forEach(item => {
+                        const formattedDate = item.publishedAt ? new Date(item.publishedAt).toLocaleString('it-IT', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Data non disponibile';
+                        html += `
+                            <div class="p-4 bg-gray-800 rounded-lg border border-gray-700 hover:border-yellow-500 transition-colors">
+                                <h4 class="font-semibold text-base text-white mb-2">
+                                    <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="hover:underline">${item.title}</a>
+                                </h4>
+                                <p class="text-gray-400 text-sm mb-3">${item.summary}</p>
+                                <div class="text-xs text-gray-500 flex justify-between items-center">
+                                    <span>Fonte: <strong>${item.source || 'N/D'}</strong></span>
+                                    <span>${formattedDate}</span>
+                                </div>
+                            </div>`;
+                    });
+
+                    html += `</div></div>`;
+                }
+                return html;
+            }
+
+            async function handleFetchAiNews() {
+                if (!state.apiKey) {
+                    state.modal = { isOpen: true, mode: 'api_key', data: null };
+                    document.getElementById('modals-container').innerHTML = renderAllModals();
+                    return;
+                }
+                state.infoModal = { isOpen: true, title: t('searchingRealTimeNews'), content: '', isLoading: true };
+                document.getElementById('modals-container').innerHTML = renderAllModals();
+
+                const today = new Date().toLocaleDateString('it-IT', { year: 'numeric', month: 'long', day: 'numeric' });
+                const prompt = `Agisci come un aggregatore di notizie finanziarie in tempo reale. La data di oggi è ${today}. Esegui una ricerca web per trovare le 5-7 notizie finanziarie più importanti pubblicate OGGI, ${today}, o nelle ultime 24 ore. Dai priorità a fonti autorevoli come Bloomberg, Reuters, Investing.com, Il Sole 24 Ore e TradingView. Per ogni notizia trovata, estrai le seguenti informazioni e restituiscile in formato JSON:
+- category: Una tra "Mercati Globali", "Criptovalute", "Materie Prime", "Eventi Macroeconomici".
+- title: Il titolo dell'articolo.
+- summary: Un breve riassunto di 1-2 frasi.
+- source: Il nome della fonte (es. "Bloomberg").
+- url: L'URL completo dell'articolo.
+- publishedAt: La data di pubblicazione esatta in formato ISO 8601.
+Assicurati che le notizie siano realmente di oggi.`;
+                
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${state.apiKey}`;
+                
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "ARRAY",
+                            items: {
+                                type: "OBJECT",
+                                properties: {
+                                    category: { type: "STRING" },
+                                    title: { type: "STRING" },
+                                    summary: { type: "STRING" },
+                                    source: { type: "STRING" },
+                                    url: { type: "STRING" },
+                                    publishedAt: { type: "STRING" }
+                                },
+                                required: ["category", "title", "summary", "source", "url", "publishedAt"]
+                            }
+                        }
+                    }
+                };
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`La richiesta API è fallita con stato ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const newsText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    
+                    if (newsText) {
+                        const newsItems = JSON.parse(newsText);
+                        state.infoModal = { isOpen: true, title: t('latestFinancialNews'), content: formatNews(newsItems), isLoading: false };
+                    } else {
+                        throw new Error("Nessun contenuto ricevuto dall'API.");
+                    }
+
+                } catch (error) {
+                    console.error("Errore nel caricare le notizie AI:", error);
+                    const errorMessage = `<p class="text-center text-red-400">${t('errorLoadingNews')}<br>Dettaglio errore: ${error.message}</p>`;
+                    state.infoModal = { isOpen: true, title: t('error'), content: errorMessage, isLoading: false };
+                } finally {
+                    document.getElementById('modals-container').innerHTML = renderAllModals();
+                }
+            }
+            
+            // --- ECONOMIC CALENDAR FUNCTIONS ---
+            function formatEconomicCalendar(events) {
+                if (!events || events.length === 0) {
+                    return '<p class="text-gray-400">Nessun evento economico di rilievo trovato per i prossimi giorni.</p>';
+                }
+
+                const groupedEvents = events.reduce((acc, event) => {
+                    const date = new Date(event.date).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' });
+                    if (!acc[date]) {
+                        acc[date] = [];
+                    }
+                    acc[date].push(event);
+                    return acc;
+                }, {});
+
+                let html = '';
+                const sortedDates = Object.keys(groupedEvents).sort((a, b) => {
+                    const dateA = new Date(events.find(e => new Date(e.date).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }) === a).date);
+                    const dateB = new Date(events.find(e => new Date(e.date).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' }) === b).date);
+                    return dateA - dateB;
+                });
+
+                for (const date of sortedDates) {
+                    html += `<div class="mb-6">
+                                <h3 class="text-lg font-semibold text-yellow-400 mb-3 border-b border-gray-700 pb-2">${date}</h3>
+                                <div class="space-y-4">`;
+
+                    groupedEvents[date].forEach(event => {
+                        html += `
+                            <div class="p-3 bg-gray-800 rounded-lg border border-gray-700">
+                                <div class="flex justify-between items-start">
+                                    <div>
+                                        <p class="font-semibold text-white">${event.event} (${event.country})</p>
+                                        <p class="text-sm text-gray-400">Ora: ${event.time || 'N/D'}</p>
+                                    </div>
+                                    <span class="text-sm font-bold">${renderStars(event.impact)}</span>
+                                </div>
+                                <div class="text-xs text-gray-500 mt-2 flex justify-between">
+                                    <span>Precedente: ${event.previous || 'N/D'}</span>
+                                    <span>Previsto: ${event.forecast || 'N/D'}</span>
+                                </div>
+                            </div>`;
+                    });
+
+                    html += `</div></div>`;
+                }
+                return html;
+            }
+
+            function renderStars(impact) {
+                const impactLower = (impact || '').toLowerCase();
+                if (impactLower === 'alta') return '<span class="star-filled">★★★</span>';
+                if (impactLower === 'media') return '<span class="star-filled">★★</span><span class="star-empty">☆</span>';
+                return '<span class="star-filled">★</span><span class="star-empty">☆☆</span>';
+            }
+
+            async function handleFetchEconomicCalendar() {
+                if (!state.apiKey) {
+                    state.modal = { isOpen: true, mode: 'api_key', data: null };
+                    document.getElementById('modals-container').innerHTML = renderAllModals();
+                    return;
+                }
+                
+                state.infoModal = { isOpen: true, title: t('loadingCalendar'), content: '', isLoading: true };
+                document.getElementById('modals-container').innerHTML = renderAllModals();
+
+                const { currentYear, currentMonthIndex } = state;
+                const monthNames = translations[state.currentLanguage].monthNames;
+                const monthName = monthNames[currentMonthIndex];
+                const prompt = `Agisci come un analista finanziario. Cerca il calendario economico per l'intero mese di ${monthName} ${currentYear}. Estrai tutti gli eventi economici per le principali economie (USA, Eurozona, Cina, Giappone, UK, Canada). Per ogni evento, fornisci la data esatta (formato YYYY-MM-DD), l'ora (in CET, formato HH:mm), il paese (sigla 3 lettere), il nome dell'evento, l'impatto ('Bassa', 'Media', 'Alta'), il valore precedente e quello previsto. Restituisci i risultati in formato JSON.`;
+                
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${state.apiKey}`;
+                
+                const payload = {
+                    contents: [{ parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: {
+                            type: "ARRAY",
+                            items: {
+                                type: "OBJECT",
+                                properties: {
+                                    date: { type: "STRING" },
+                                    time: { type: "STRING" },
+                                    country: { type: "STRING" },
+                                    event: { type: "STRING" },
+                                    impact: { type: "STRING" },
+                                    forecast: { type: "STRING" },
+                                    previous: { type: "STRING" }
+                                },
+                                required: ["date", "time", "country", "event", "impact"]
+                            }
+                        }
+                    }
+                };
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) throw new Error(`API fallita: ${response.status}`);
+
+                    const result = await response.json();
+                    const calendarText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    
+                    if (calendarText) {
+                        const calendarEvents = JSON.parse(calendarText);
+                        state.infoModal = { isOpen: true, title: `${t('economicCalendar')} - ${monthName} ${currentYear}`, content: formatEconomicCalendar(calendarEvents), isLoading: false };
+                    } else {
+                        throw new Error("Nessun contenuto ricevuto dall'API.");
+                    }
+
+                } catch (error) {
+                    console.error("Errore nel caricare il calendario economico:", error);
+                    const errorMessage = `<p class="text-center text-red-400">${t('errorLoadingCalendar')}<br>Dettaglio errore: ${error.message}</p>`;
+                    state.infoModal = { isOpen: true, title: t('error'), content: errorMessage, isLoading: false };
+                } finally {
+                    document.getElementById('modals-container').innerHTML = renderAllModals();
+                }
+            }
+
+            // --- AI ANALYSIS FUNCTION ---
+            function formatAiAnalysis(text) {
+                 if (!text) return '<p class="text-gray-400">Nessuna analisi disponibile.</p>';
+                let html = '';
+                const sections = text.split(/\*\*(.*?)\*\*/g).filter(s => s.trim() !== '');
+
+                for (let i = 0; i < sections.length; i += 2) {
+                    const title = sections[i].replace(/:$/, '').trim();
+                    const content = sections[i + 1] || '';
+                    
+                    html += `<div class="mb-4">
+                                <h3 class="text-lg font-semibold text-yellow-400 mb-2">${title}</h3>`;
+                    
+                    const items = content.trim().split('\n- ').filter(item => item.trim() !== '');
+                    if (items.length > 1 || content.trim().startsWith('- ')) {
+                         html += '<ul class="space-y-2 list-disc list-inside text-gray-300">';
+                         items.forEach(item => {
+                             html += `<li>${item.trim()}</li>`;
+                         });
+                         html += '</ul>';
+                    } else {
+                        html += `<p class="text-gray-300">${content.trim()}</p>`;
+                    }
+                    html += `</div>`;
+                }
+                return html;
+            }
+
+            async function handleFetchAiAnalysis() {
+                if (!state.apiKey) {
+                    state.modal = { isOpen: true, mode: 'api_key', data: null };
+                    document.getElementById('modals-container').innerHTML = renderAllModals();
+                    return;
+                }
+                
+                const { currentYear, currentMonthIndex, trades } = state;
+                const monthNames = translations[state.currentLanguage].monthNames;
+                const monthKey = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`;
+                const tradesInMonth = trades
+                    .filter(t => t.status === 'closed' && t.saleDate && t.saleDate.startsWith(monthKey))
+                    .map(t => {
+                        const p = calculateTradeProfits(t);
+                        return {
+                            simbolo: t.cryptoSymbol,
+                            profitto_percentuale: p.percentageProfit.toFixed(2)
+                        };
+                    });
+
+                if (tradesInMonth.length === 0) {
+                    state.infoModal = { isOpen: true, title: `${t('aiAnalysis')} - ${monthNames[currentMonthIndex]}`, content: `<p>${t('noTradesToAnalyze')}</p>`, isLoading: false };
+                    document.getElementById('modals-container').innerHTML = renderAllModals();
+                    return;
+                }
+
+                state.infoModal = { isOpen: true, title: `${t('aiAnalysis')} - ${monthNames[currentMonthIndex]}`, content: '', isLoading: true };
+                document.getElementById('modals-container').innerHTML = renderAllModals();
+
+                const prompt = `Agisci come un analista di trading professionista. Analizza la seguente lista di operazioni di trading in criptovalute chiuse questo mese: ${JSON.stringify(tradesInMonth)}. Fornisci un riassunto qualitativo della performance. Struttura la risposta in sezioni con titoli in grassetto (es. **Analisi Generale**). Le sezioni devono essere:
+- **Analisi Generale**: Un breve riassunto della performance del mese.
+- **Punti di Forza**: Identifica le operazioni migliori o pattern positivi.
+- **Aree di Miglioramento**: Identifica le operazioni peggiori o errori comuni.
+- **Consigli AI ✨**: Offri 2-3 consigli pratici e personalizzati per migliorare.`;
+
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${state.apiKey}`;
+                const payload = { contents: [{ parts: [{ text: prompt }] }] };
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`La richiesta API è fallita con stato ${response.status}`);
+                    }
+
+                    const result = await response.json();
+                    const analysisText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    
+                    if (analysisText) {
+                        state.infoModal = { isOpen: true, title: `${t('aiAnalysis')} - ${monthNames[currentMonthIndex]}`, content: formatAiAnalysis(analysisText), isLoading: false };
+                    } else {
+                        throw new Error("Nessun contenuto ricevuto dall'API.");
+                    }
+
+                } catch (error) {
+                    console.error("Errore nel caricare l'analisi AI:", error);
+                    const errorMessage = `<p class="text-center text-red-400">${t('errorLoadingNews')}<br>Dettaglio errore: ${error.message}</p>`;
+                    state.infoModal = { isOpen: true, title: t('error'), content: errorMessage, isLoading: false };
+                } finally {
+                    document.getElementById('modals-container').innerHTML = renderAllModals();
+                }
+            }
+            
+            // --- INFO FUNCTION ---
+            function handleShowInfo() {
+                const infoContent = `
+                    <div class="space-y-4 text-sm">
+                        <h2 class="text-lg font-bold text-white">Termini e Condizioni d'Uso di TradeFolio</h2>
+                        <p class="text-xs text-gray-400">Versione: 1.15 | Ultimo aggiornamento: 4 agosto 2025</p>
+                        
+                        <div>
+                            <h3 class="font-bold text-white mb-1">Accettazione dei Termini</h3>
+                            <p>Benvenuto su TradeFolio (l'”App”), un'applicazione per la gestione di portafogli di trading creata da Fabio Amendola. Accedendo o utilizzando l'App, l'utente accetta di essere vincolato da questi Termini e Condizioni d'Uso (“Termini”). Se l'utente non è d'accordo con una qualsiasi parte di questi termini, non deve utilizzare l'App.</p>
+                        </div>
+                        
+                        <div>
+                            <h3 class="font-bold text-white mb-1">Descrizione del Servizio</h3>
+                            <p>L'App TradeFolio è uno strumento progettato per aiutare gli utenti a tracciare e gestire i propri portafogli di trading e investimenti. Le funzionalità includono l'inserimento manuale di operazioni, il calcolo delle performance e la visualizzazione di report.</p>
+                            <p class="mt-2 p-2 bg-yellow-900/50 text-yellow-300 border-l-4 border-yellow-400 rounded"><strong>Importante:</strong> I dati e le analisi forniti dall'App sono puramente a scopo informativo e non devono essere considerati in alcun modo come consulenza finanziaria, fiscale o di investimento. L'utente è il solo responsabile delle proprie decisioni di trading e investimento.</p>
+                        </div>
+
+                        <div>
+                            <h3 class="font-bold text-white mb-1">Diritti di Proprietà Intellettuale</h3>
+                            <p>L'App, inclusi tutti i suoi contenuti, il design, il codice sorgente e la documentazione, sono di proprietà esclusiva di Fabio Amendola. Tutti i diritti sono riservati. L'utente non è autorizzato a copiare, modificare, distribuire, vendere o noleggiare alcuna parte dell'App o del suo contenuto senza il previo consenso scritto del proprietario.</p>
+                        </div>
+
+                        <div>
+                            <h3 class="font-bold text-white mb-1">Limitazione di Responsabilità</h3>
+                            <p>L'App viene fornita "così com'è" senza alcuna garanzia, esplicita o implicita. Fabio Amendola non sarà responsabile per eventuali danni diretti, indiretti, incidentali, speciali o consequenziali derivanti dall'uso o dall'impossibilità di usare l'App. L'utente si assume tutti i rischi associati all'utilizzo del servizio.</p>
+                        </div>
+                        
+                        <p class="text-xs text-gray-500 pt-4 border-t border-gray-600">Copyright © 2025 Fabio Amendola. Tutti i diritti riservati.</p>
+                    </div>
+                `;
+                state.infoModal = { isOpen: true, title: t('termsAndConditions'), content: infoContent, isLoading: false };
+                document.getElementById('modals-container').innerHTML = renderAllModals();
+            }
+
+            // --- CONVERTER FUNCTION ---
+            function handleConversion(event) {
+                const fromAmountInput = document.getElementById('converter-from-amount');
+                const fromCurrencySelect = document.getElementById('converter-from-currency');
+                const toAmountInput = document.getElementById('converter-to-amount');
+                const toCurrencySelect = document.getElementById('converter-to-currency');
+
+                if (!fromAmountInput || !fromCurrencySelect || !toAmountInput || !toCurrencySelect) return;
+
+                const fromCurrencyId = fromCurrencySelect.value;
+                const toCurrencyId = toCurrencySelect.value;
+                
+                const fromCoin = state.tickerData.find(c => c.id === fromCurrencyId);
+                const toCoin = state.tickerData.find(c => c.id === toCurrencyId);
+
+                if (!fromCoin || !toCoin) return;
+
+                const fromPrice = fromCoin.current_price;
+                const toPrice = toCoin.current_price;
+
+                if (toPrice === 0) return; // Avoid division by zero
+
+                const rate = fromPrice / toPrice;
+
+                const sourceElement = event ? event.target : fromAmountInput;
+
+                if (sourceElement.id === 'converter-from-amount' || sourceElement.id === 'converter-from-currency' || sourceElement.id === 'converter-to-currency') {
+                    const fromAmount = parseFloat(fromAmountInput.value);
+                    if (!isNaN(fromAmount)) {
+                        toAmountInput.value = (fromAmount * rate).toFixed(6);
+                    } else {
+                        toAmountInput.value = '';
+                    }
+                } else if (sourceElement.id === 'converter-to-amount') {
+                    const toAmount = parseFloat(toAmountInput.value);
+                    if (!isNaN(toAmount)) {
+                        fromAmountInput.value = (toAmount / rate).toFixed(6);
+                    } else {
+                        fromAmountInput.value = '';
+                    }
+                }
+            }
+
+            // --- CONTACT FUNCTION ---
+            function handleSendEmail() {
+                const subjectInput = document.getElementById('contact-subject');
+                const messageInput = document.getElementById('contact-message');
+
+                if (!subjectInput || !messageInput) return;
+
+                const subject = subjectInput.value;
+                const message = messageInput.value;
+                
+                const mailtoUrl = `mailto:fabius.amendola@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+                
+                window.open(mailtoUrl, '_blank');
+            }
+
+
+            // --- API & INITIALIZATION ---
+            async function fetchTickerData() {
+                if (!navigator.onLine) {
+                    state.tickerData = [];
+                    document.getElementById('ticker-container').innerHTML = renderTicker();
+                    return;
+                }
+                try {
+                    const response = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=${state.currentCurrency}&order=market_cap_desc&per_page=50&page=1&sparkline=false`);
+                    if (!response.ok) throw new Error('Ticker API response not OK');
+                    state.tickerData = await response.json();
+                } catch (error) {
+                    console.error("Could not fetch ticker data:", error);
+                    state.tickerData = []; // Svuota i dati in caso di errore per non mostrare dati vecchi
+                } finally {
+                    document.getElementById('ticker-container').innerHTML = renderTicker();
+                }
+            }
+            
+            // --- UI/AUTH FLOW MANAGEMENT ---
+            function showApp() {
+                const splashScreen = document.getElementById('splash-screen');
+                const appContainer = document.getElementById('app-container');
+                if (splashScreen) {
+                    splashScreen.style.opacity = '0';
+                    splashScreen.addEventListener('transitionend', () => {
+                        splashScreen.style.display = 'none';
+                    }, { once: true });
+                }
+                if (appContainer) {
+                    appContainer.classList.add('visible');
+                }
+            }
+
+            function showLogin() {
+                const splashScreen = document.getElementById('splash-screen');
+                const appContainer = document.getElementById('app-container');
+                if (splashScreen) {
+                    splashScreen.style.opacity = '1';
+                    splashScreen.style.display = 'flex';
+                }
+                if (appContainer) {
+                    appContainer.classList.remove('visible');
+                }
+            }
+            
+            // --- AUTHENTICATION & APP START ---
+            async function handleGoogleSignIn() {
+                const btn = document.getElementById('google-signin-btn');
+                const btnText = document.getElementById('google-signin-text');
+                if(btn) btn.disabled = true;
+                if(btnText) btnText.textContent = t('signingIn');
+                try {
+                    await signInWithPopup(auth, googleProvider);
+                } catch (error) {
+                    console.error("Errore di login con Google:", error);
+                    if(btn) btn.disabled = false;
+                    if(btnText) btnText.textContent = t('signInWithGoogle');
+                }
+            }
+
+            document.getElementById('google-signin-btn').addEventListener('click', handleGoogleSignIn);
+
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    state.user = user;
+                    setupTradesListener(user.uid);
+                    showApp();
+                } else {
+                    state.user = null;
+                    state.trades = [];
+                    if(state.tradesListener) state.tradesListener(); // Stop listening
+                    showLogin();
+                    render(); // Render to clear old data from UI
+                }
+            });
+
+            // Initial Load
+            loadSettings();
+            fetchTickerData().then(() => {
+                render(); 
+            });
+            setInterval(fetchTickerData, 90000);
+        });
+    </script>
+</body>
+</html>
