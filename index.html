@@ -17,17 +17,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
-    
-    <script>
-      // Cattura immediatamente l'URL di accesso completo per evitare che vada perso
-      // a causa di reindirizzamenti su piattaforme di hosting per single-page app.
-      if (window.location.search.includes('apiKey') && window.location.search.includes('oobCode')) {
-        sessionStorage.setItem('firebaseSignInLink', window.location.href);
-        // Pulisce la barra degli indirizzi per l'utente, per una migliore UX.
-        window.history.replaceState({}, document.title, window.location.pathname);
-      }
-    </script>
-
     <style>
         /* Stili generali del corpo */
         body { 
@@ -410,7 +399,7 @@
     <script type="module">
         // Importa le funzioni necessarie dai moduli SDK di cui hai bisogno
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
-        import { getAuth, onAuthStateChanged, signOut, sendSignInLinkToEmail, isSignInWithEmailLink, signInWithEmailLink } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
         import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
         
         const firebaseConfig = {
@@ -443,7 +432,7 @@
                 converterModal: { isOpen: false },
                 contactModal: { isOpen: false },
                 isMenuOpen: false,
-                auth: { mode: 'login', error: null, isLoading: false, message: null },
+                auth: { mode: 'login', error: null, isLoading: false },
                 currentCurrency: 'usd',
                 supportedCurrencies: [
                     { code: 'usd', symbol: '$', name: 'Dollaro USA' },
@@ -470,7 +459,6 @@
                     { code: 'fr', name: 'Français', shortName: 'FRA' },
                 ],
                 user: null, // Per memorizzare l'utente autenticato
-                currentUserData: null, // Per i dati dell'utente da Firestore
                 tradesListener: null, // Per tenere traccia del listener di Firestore
             };
             let profitChart = null;
@@ -525,7 +513,7 @@
                     noTradesThisMonth: "Nessuna operazione chiusa in questo mese.",
                     termsAndConditions: "Termini e Condizioni",
                     edit: "Edita",
-                    delete: "Elimina",
+                    delete: "Delete",
                     converter: "Convertitore",
                     currencyConverter: "Convertitore di Valute",
                     from: "Da",
@@ -542,15 +530,11 @@
                     login: "Accedi",
                     register: "Registrati",
                     email: "Email",
-                    firstName: "Nome",
-                    lastName: "Cognome",
+                    password: "Password",
                     noAccount: "Non hai un account?",
                     haveAccount: "Hai già un account?",
                     signOut: "Esci",
-                    sendLoginLink: "Invia Link di Accesso",
-                    loginLinkSent: "Link inviato! Controlla la tua email per accedere.",
-                    registrationLinkSent: "Link inviato! Controlla la tua email per completare la registrazione.",
-                    loginError: "Impossibile inviare il link. Controlla l'email e riprova.",
+                    rememberMe: "Ricordami"
                 },
                 en: {
                     monthNames: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
@@ -617,16 +601,13 @@
                     login: "Login",
                     register: "Register",
                     email: "Email",
-                    firstName: "First Name",
-                    lastName: "Last Name",
+                    password: "Password",
                     noAccount: "Don't have an account?",
                     haveAccount: "Already have an account?",
                     signOut: "Sign Out",
-                    sendLoginLink: "Send Login Link",
-                    loginLinkSent: "Link sent! Check your email to log in.",
-                    registrationLinkSent: "Link sent! Check your email to complete registration.",
-                    loginError: "Could not send link. Check the email and try again.",
+                    rememberMe: "Remember Me"
                 }
+                // Aggiungere qui le traduzioni per DE e FR se necessario
             };
 
             const t = (key) => {
@@ -634,20 +615,9 @@
             };
             
             // --- FIRESTORE FUNCTIONS ---
-            async function fetchUserData(userId) {
-                const userDocRef = doc(db, "users", userId);
-                const docSnap = await getDoc(userDocRef);
-                if (docSnap.exists()) {
-                    state.currentUserData = docSnap.data();
-                } else {
-                    console.log("No such user document!");
-                    state.currentUserData = null;
-                }
-            }
-
             function setupTradesListener(userId) {
                 if (state.tradesListener) {
-                    state.tradesListener();
+                    state.tradesListener(); // Rimuove il listener precedente
                 }
                 const tradesCollection = collection(db, "users", userId, "trades");
                 state.tradesListener = onSnapshot(tradesCollection, (snapshot) => {
@@ -672,7 +642,7 @@
                 await deleteDoc(doc(db, "users", state.user.uid, "trades", tradeId));
             }
 
-            // --- LOCAL SETTINGS FUNCTIONS ---
+            // --- LOCAL SETTINGS FUNCTIONS (non per i trade) ---
             function loadSettings() {
                 const savedSettings = localStorage.getItem('tradefolioSettings');
                 if(savedSettings) {
@@ -709,6 +679,7 @@
             };
 
             const calculateTradeProfits = (trade) => {
+                // I prezzi sono già in USD, quindi il profitto calcolato è in USD
                 if (trade.status !== 'closed' || !trade.salePrice) return { ...trade, netProfit: 0, percentageProfit: 0 };
                 const netProfit = (trade.salePrice - trade.purchasePrice) * trade.quantity;
                 const costBasis = trade.purchasePrice * trade.quantity;
@@ -794,22 +765,27 @@
             }
 
             function renderAuthForm() {
-                const { mode, error, isLoading, message } = state.auth;
+                const { mode, error, isLoading } = state.auth;
                 const isLogin = mode === 'login';
 
                 return `
                     <form id="auth-form" class="space-y-4">
-                        ${!isLogin ? `
-                            <input type="text" id="auth-firstname" placeholder="${t('firstName')}" required class="modal-input">
-                            <input type="text" id="auth-lastname" placeholder="${t('lastName')}" required class="modal-input">
-                        ` : ''}
                         <input type="email" id="auth-email" placeholder="${t('email')}" required class="modal-input">
+                        <input type="password" id="auth-password" placeholder="${t('password')}" required class="modal-input">
                         
-                        ${message ? `<p class="text-green-400 text-sm text-center">${message}</p>` : ''}
+                        ${isLogin ? `
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <input id="remember-me" name="remember-me" type="checkbox" class="h-4 w-4 text-yellow-500 focus:ring-yellow-400 border-gray-500 rounded bg-gray-700">
+                                <label for="remember-me" class="ml-2 block text-sm text-gray-300">${t('rememberMe')}</label>
+                            </div>
+                        </div>
+                        ` : ''}
+
                         ${error ? `<p class="text-red-400 text-sm text-center">${error}</p>` : ''}
 
                         <button type="submit" class="modal-btn w-full ${isLogin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 hover:bg-gray-500 text-white'}" ${isLoading ? 'disabled' : ''}>
-                            ${isLoading ? `<div class="loader !w-6 !h-6 !border-4"></div>` : (isLogin ? t('sendLoginLink') : t('register'))}
+                            ${isLoading ? `<div class="loader !w-6 !h-6 !border-4"></div>` : (isLogin ? t('login') : t('register'))}
                         </button>
                     </form>
                     <p class="text-center text-sm text-gray-400 mt-4">
@@ -1179,13 +1155,9 @@
                 const currentSymbol = getCurrencySymbol();
 
                 let userSection = '';
-                if (state.user && state.currentUserData) {
+                if (state.user) {
                     userSection = `
                         <div class="mt-auto pt-4 border-t border-gray-700">
-                            <div class="text-center mb-4">
-                                <p class="font-semibold text-white">${state.currentUserData.firstName} ${state.currentUserData.lastName}</p>
-                                <p class="text-xs text-gray-400">${state.user.email}</p>
-                            </div>
                             <button data-action="logout" class="w-full flex items-center justify-center gap-2 p-2 rounded-lg text-red-400 hover:bg-red-900/50 transition-colors">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 102 0V4a1 1 0 00-1-1zm10.293 9.293a1 1 0 001.414 1.414l3-3a1 1 0 000-1.414l-3-3a1 1 0 10-1.414 1.414L14.586 9H7a1 1 0 100 2h7.586l-1.293 1.293z" clip-rule="evenodd" /></svg>
                                 <span>${t('signOut')}</span>
@@ -1266,19 +1238,35 @@
                 const { mode, tradeId } = target.dataset;
 
                 switch(action) {
-                    case 'prev-year': state.currentYear--; render(); break;
-                    case 'next-year': state.currentYear++; render(); break;
+                    case 'prev-year':
+                        state.currentYear--;
+                        render();
+                        break;
+                    case 'next-year':
+                        state.currentYear++;
+                        render();
+                        break;
                     case 'prev-month':
-                        if (state.currentMonthIndex === 0) { state.currentYear--; state.currentMonthIndex = 11; } 
-                        else { state.currentMonthIndex--; }
+                        if (state.currentMonthIndex === 0) {
+                            state.currentYear--;
+                            state.currentMonthIndex = 11;
+                        } else {
+                            state.currentMonthIndex--;
+                        }
                         render();
                         break;
                     case 'next-month':
-                        if (state.currentMonthIndex === 11) { state.currentYear++; state.currentMonthIndex = 0; } 
-                        else { state.currentMonthIndex++; }
+                        if (state.currentMonthIndex === 11) {
+                            state.currentYear++;
+                            state.currentMonthIndex = 0;
+                        } else {
+                            state.currentMonthIndex++;
+                        }
                         render();
                         break;
-                    case 'toggle-menu': toggleMenu(); break;
+                    case 'toggle-menu':
+                        toggleMenu();
+                        break;
                     case 'open-modal':
                         state.modal = { isOpen: true, mode, data: { tradeId } };
                         render();
@@ -1292,7 +1280,11 @@
                         state.confirmationModal.isOpen = false;
                         render();
                         break;
-                    case 'close-modal': case 'cancel-delete': case 'close-info-modal': case 'close-converter-modal': case 'close-contact-modal':
+                    case 'close-modal':
+                    case 'cancel-delete':
+                    case 'close-info-modal':
+                    case 'close-converter-modal':
+                    case 'close-contact-modal':
                         state.modal.isOpen = false;
                         state.confirmationModal.isOpen = false;
                         state.converterModal.isOpen = false;
@@ -1310,26 +1302,39 @@
                         }
                         toggleMenu(false);
                         break;
-                    case 'swap-currencies': handleSwapCurrencies(); break;
+                    case 'swap-currencies':
+                        handleSwapCurrencies();
+                        break;
                     case 'open-contact':
                         state.contactModal.isOpen = true;
                         render();
                         toggleMenu(false);
                         break;
-                    case 'send-email': handleSendEmail(); break;
+                    case 'send-email':
+                        handleSendEmail();
+                        break;
                     case 'generate-monthly-report': handleGenerateMonthlyReport(); break;
                     case 'fetch-ai-news': handleFetchAiNews(); break;
-                    case 'download-csv': handleDownloadCsv(); toggleMenu(false); break;
+                    case 'download-csv': 
+                        handleDownloadCsv(); 
+                        toggleMenu(false);
+                        break;
                     case 'fetch-economic-calendar': handleFetchEconomicCalendar(); break;
                     case 'fetch-ai-analysis': handleFetchAiAnalysis(); break;
-                    case 'show-info': handleShowInfo(); toggleMenu(false); break;
+                    case 'show-info': 
+                        handleShowInfo();
+                        toggleMenu(false);
+                        break;
                     case 'toggle-auth-form':
                         state.auth.mode = state.auth.mode === 'login' ? 'register' : 'login';
                         state.auth.error = null;
-                        state.auth.message = null;
                         render();
+                        loadCredentials();
                         break;
-                    case 'logout': signOut(auth); break;
+                    case 'logout':
+                        state.auth = { mode: 'login', error: null, isLoading: false };
+                        signOut(auth);
+                        break;
                 }
             });
 
@@ -1340,7 +1345,7 @@
                     if (currency && currency !== state.currentCurrency) {
                         state.currentCurrency = currency;
                         saveSettings();
-                        render();
+                        render(); // Re-render with new currency
                         toggleMenu(false);
                     }
                 }
@@ -1371,49 +1376,59 @@
                 e.preventDefault();
 
                 if (e.target.id === 'auth-form') {
-                    const email = document.getElementById('auth-email').value;
+                    const emailInput = document.getElementById('auth-email');
+                    const passwordInput = document.getElementById('auth-password');
+                    const rememberMeCheckbox = document.getElementById('remember-me');
+                    
+                    const email = emailInput.value;
+                    const password = passwordInput.value;
+                    const rememberMe = rememberMeCheckbox?.checked;
                     const action = state.auth.mode;
 
                     state.auth.isLoading = true;
                     state.auth.error = null;
-                    state.auth.message = null;
-                    render();
-                    
-                    const actionCodeSettings = {
-                        url: 'https://fabius1982.github.io/Tradefolio/', // URL specifico della tua app
-                        handleCodeInApp: true,
-                    };
+                    render(); // Mostra il loader e mantiene i valori
+
+                    // Ripristina i valori dopo il render per non perderli
+                    document.getElementById('auth-email').value = email;
+                    document.getElementById('auth-password').value = password;
+                    if (rememberMeCheckbox) {
+                        document.getElementById('remember-me').checked = rememberMe;
+                    }
 
                     try {
                         if (action === 'register') {
-                            const firstName = document.getElementById('auth-firstname').value;
-                            const lastName = document.getElementById('auth-lastname').value;
-                            // Salva i dati di registrazione temporaneamente
-                            const registrationData = { firstName, lastName, email };
-                            window.localStorage.setItem('registrationPending', JSON.stringify(registrationData));
+                            await createUserWithEmailAndPassword(auth, email, password);
+                            localStorage.removeItem('tradefolioCredentials');
+                        } else {
+                            await signInWithEmailAndPassword(auth, email, password);
+                            if (rememberMe) {
+                                const credentials = { email, password: btoa(password) }; // Salva la password codificata
+                                localStorage.setItem('tradefolioCredentials', JSON.stringify(credentials));
+                            } else {
+                                localStorage.removeItem('tradefolioCredentials');
+                            }
                         }
-                        // Per il login, non serve salvare altro che l'email
-                        window.localStorage.setItem('emailForSignIn', email);
-                        
-                        await sendSignInLinkToEmail(auth, email, actionCodeSettings);
-
-                        state.auth.isLoading = false;
-                        state.auth.message = (action === 'register') ? t('registrationLinkSent') : t('loginLinkSent');
-                        render();
-
+                        // onAuthStateChanged gestirà il successo
                     } catch (error) {
-                        console.error("Auth link error:", error);
-                        state.auth.error = t('loginError');
+                        console.error("Authentication error:", error.code);
+                        state.auth.error = error.message;
                         state.auth.isLoading = false;
-                        render();
-                        window.localStorage.removeItem('emailForSignIn');
-                        window.localStorage.removeItem('registrationPending');
+                        render(); // Renderizza di nuovo per mostrare l'errore
+
+                        // Ripristina di nuovo i valori dopo il render dell'errore
+                        document.getElementById('auth-email').value = email;
+                        document.getElementById('auth-password').value = password;
+                        if (rememberMeCheckbox) {
+                            document.getElementById('remember-me').checked = rememberMe;
+                        }
                     }
                     return;
                 }
 
                 if (e.target.id === 'trade-form') {
                     const { mode, data } = state.modal;
+
                     if (mode === 'open') {
                         const priceInCurrentCurrency = parseFloat(document.getElementById('open-price').value);
                         const newTrade = { 
@@ -2095,6 +2110,26 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
             }
             
             // --- UI/AUTH FLOW MANAGEMENT ---
+            function loadCredentials() {
+                const credentials = localStorage.getItem('tradefolioCredentials');
+                if (credentials) {
+                    try {
+                        const { email, password } = JSON.parse(credentials);
+                        const emailInput = document.getElementById('auth-email');
+                        const passwordInput = document.getElementById('auth-password');
+                        const rememberMeCheckbox = document.getElementById('remember-me');
+                        if (emailInput && passwordInput && rememberMeCheckbox) {
+                            emailInput.value = email;
+                            passwordInput.value = atob(password); // Decode password
+                            rememberMeCheckbox.checked = true;
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse saved credentials", e);
+                        localStorage.removeItem('tradefolioCredentials');
+                    }
+                }
+            }
+
             function showApp() {
                 const splashScreen = document.getElementById('splash-screen');
                 const appContainer = document.getElementById('app-container');
@@ -2110,55 +2145,13 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
                 splashScreen.style.pointerEvents = 'auto';
                 appContainer.classList.remove('visible');
                 render();
+                loadCredentials();
             }
-            
-            async function completeSignIn() {
-                const link = sessionStorage.getItem('firebaseSignInLink');
-                if (!link) return; // Nessun link da processare
-
-                let email = window.localStorage.getItem('emailForSignIn');
-                if (!email) {
-                    email = window.prompt('Per favore, fornisci la tua email per completare l\'accesso.');
-                }
-                if (!email) {
-                    sessionStorage.removeItem('firebaseSignInLink'); // Pulisce
-                    return;
-                }
-
-                try {
-                    await signInWithEmailLink(auth, email, link);
-                    // onAuthStateChanged gestirà il login con successo
-                    window.localStorage.removeItem('emailForSignIn');
-                } catch (error) {
-                    console.error("Errore nell'accesso con link:", error);
-                    state.auth.error = "Link non valido o scaduto. Riprova.";
-                    // Mostra l'errore sulla schermata di login
-                    showLoginScreen();
-                } finally {
-                    sessionStorage.removeItem('firebaseSignInLink'); // Pulisce dopo il tentativo
-                }
-            }
-
 
             // --- AUTHENTICATION & APP START ---
-            onAuthStateChanged(auth, async (user) => {
+            onAuthStateChanged(auth, (user) => {
                 if (user) {
                     state.user = user;
-                    await fetchUserData(user.uid);
-                    
-                    // Se i dati dell'utente non esistono, è una nuova registrazione
-                    if (!state.currentUserData) {
-                        const pendingReg = window.localStorage.getItem('registrationPending');
-                        if (pendingReg) {
-                            const { firstName, lastName, email } = JSON.parse(pendingReg);
-                            if (email === user.email) { // Assicurati che l'email corrisponda
-                                await setDoc(doc(db, "users", user.uid), { firstName, lastName, email });
-                                await fetchUserData(user.uid); // Ricarica i dati
-                                window.localStorage.removeItem('registrationPending');
-                            }
-                        }
-                    }
-
                     setupTradesListener(user.uid);
                     loadSettings();
                     
@@ -2169,15 +2162,13 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
                     
                     setInterval(fetchTickerData, 90000);
                 } else {
-                    // Nessun utente è connesso, prova a completare l'accesso con il link
-                    await completeSignIn();
-                    // Se l'accesso non è andato a buon fine (o non c'era nessun link), mostra la schermata di login
-                    if (!auth.currentUser) {
-                        showLoginScreen();
-                    }
+                    state.user = null;
+                    state.trades = [];
+                    if (state.tradesListener) state.tradesListener();
+                    showLoginScreen();
                 }
             });
         });
     </script>
 </body>
-</html>"
+</html>
