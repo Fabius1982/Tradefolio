@@ -17,6 +17,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
+    
+    <script>
+      // Cattura immediatamente l'URL di accesso completo per evitare che vada perso
+      // a causa di reindirizzamenti su piattaforme di hosting per single-page app.
+      if (window.location.search.includes('apiKey') && window.location.search.includes('oobCode')) {
+        sessionStorage.setItem('firebaseSignInLink', window.location.href);
+        // Pulisce la barra degli indirizzi per l'utente, per una migliore UX.
+        window.history.replaceState({}, document.title, window.location.pathname);
+      }
+    </script>
+
     <style>
         /* Stili generali del corpo */
         body { 
@@ -1368,7 +1379,6 @@
                     state.auth.message = null;
                     render();
                     
-                    // *** MODIFICA CHIAVE QUI ***
                     const actionCodeSettings = {
                         url: 'https://fabius1982.github.io/Tradefolio/', // URL specifico della tua app
                         handleCodeInApp: true,
@@ -2102,31 +2112,35 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
                 render();
             }
             
-            async function handleSignInWithLink() {
-                if (isSignInWithEmailLink(auth, window.location.href)) {
-                    let email = window.localStorage.getItem('emailForSignIn');
-                    if (!email) {
-                        email = window.prompt('Per favore, fornisci la tua email per completare l\'accesso.');
-                    }
-                    if (!email) return; 
+            async function completeSignIn() {
+                const link = sessionStorage.getItem('firebaseSignInLink');
+                if (!link) return; // Nessun link da processare
 
-                    try {
-                        const result = await signInWithEmailLink(auth, email, window.location.href);
-                        // onAuthStateChanged si occuperà del resto
-                        window.localStorage.removeItem('emailForSignIn');
-                        // Pulisce l'URL
-                        window.history.replaceState({}, document.title, window.location.pathname);
-                    } catch (error) {
-                        console.error("Errore nell'accesso con link:", error);
-                        state.auth.error = "Link non valido o scaduto. Riprova.";
-                        render();
-                    }
+                let email = window.localStorage.getItem('emailForSignIn');
+                if (!email) {
+                    email = window.prompt('Per favore, fornisci la tua email per completare l\'accesso.');
+                }
+                if (!email) {
+                    sessionStorage.removeItem('firebaseSignInLink'); // Pulisce
+                    return;
+                }
+
+                try {
+                    await signInWithEmailLink(auth, email, link);
+                    // onAuthStateChanged gestirà il login con successo
+                    window.localStorage.removeItem('emailForSignIn');
+                } catch (error) {
+                    console.error("Errore nell'accesso con link:", error);
+                    state.auth.error = "Link non valido o scaduto. Riprova.";
+                    // Mostra l'errore sulla schermata di login
+                    showLoginScreen();
+                } finally {
+                    sessionStorage.removeItem('firebaseSignInLink'); // Pulisce dopo il tentativo
                 }
             }
 
-            // --- AUTHENTICATION & APP START ---
-            handleSignInWithLink(); // Controlla subito se l'URL è un link di accesso
 
+            // --- AUTHENTICATION & APP START ---
             onAuthStateChanged(auth, async (user) => {
                 if (user) {
                     state.user = user;
@@ -2155,14 +2169,15 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
                     
                     setInterval(fetchTickerData, 90000);
                 } else {
-                    state.user = null;
-                    state.currentUserData = null;
-                    state.trades = [];
-                    if (state.tradesListener) state.tradesListener();
-                    showLoginScreen();
+                    // Nessun utente è connesso, prova a completare l'accesso con il link
+                    await completeSignIn();
+                    // Se l'accesso non è andato a buon fine (o non c'era nessun link), mostra la schermata di login
+                    if (!auth.currentUser) {
+                        showLoginScreen();
+                    }
                 }
             });
         });
     </script>
 </body>
-</html>
+</html>"
