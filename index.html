@@ -399,7 +399,7 @@
     <script type="module">
         // Importa le funzioni necessarie dai moduli SDK di cui hai bisogno
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
-        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
         import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
         
         const firebaseConfig = {
@@ -432,7 +432,9 @@
                 converterModal: { isOpen: false },
                 contactModal: { isOpen: false },
                 isMenuOpen: false,
-                auth: { mode: 'login', error: null, isLoading: false },
+                currentUserEmail: null,
+                currentUserId: null,
+                isLoading: false,
                 currentCurrency: 'usd',
                 supportedCurrencies: [
                     { code: 'usd', symbol: '$', name: 'Dollaro USA' },
@@ -458,10 +460,9 @@
                     { code: 'de', name: 'Deutsch', shortName: 'DEU' },
                     { code: 'fr', name: 'Français', shortName: 'FRA' },
                 ],
-                user: null, // Per memorizzare l'utente autenticato
-                tradesListener: null, // Per tenere traccia del listener di Firestore
             };
             let profitChart = null;
+            let tradesListener = null;
 
             // --- TRANSLATIONS ---
             const translations = {
@@ -527,14 +528,9 @@
                     searchingLive: "Ricerca dati in tempo reale...",
                     fiatCurrencies: "Valute Fiat",
                     cryptoCurrencies: "Criptovalute",
-                    login: "Accedi",
-                    register: "Registrati",
-                    email: "Email",
-                    password: "Password",
-                    noAccount: "Non hai un account?",
-                    haveAccount: "Hai già un account?",
-                    signOut: "Esci",
-                    rememberMe: "Ricordami"
+                    login: "Entra",
+                    email: "La tua Email",
+                    signOut: "Cambia Account",
                 },
                 en: {
                     monthNames: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
@@ -598,48 +594,57 @@
                     searchingLive: "Searching for live data...",
                     fiatCurrencies: "Fiat Currencies",
                     cryptoCurrencies: "Cryptocurrencies",
-                    login: "Login",
-                    register: "Register",
-                    email: "Email",
-                    password: "Password",
-                    noAccount: "Don't have an account?",
-                    haveAccount: "Already have an account?",
-                    signOut: "Sign Out",
-                    rememberMe: "Remember Me"
+                    login: "Enter",
+                    email: "Your Email",
+                    signOut: "Change Account",
                 }
-                // Aggiungere qui le traduzioni per DE e FR se necessario
             };
 
             const t = (key) => {
                 return translations[state.currentLanguage]?.[key] || translations['it'][key] || key;
             };
+
+            // --- UTILITY FUNCTIONS ---
+            function safeEncode(str) {
+                try {
+                    return btoa(str)
+                        .replace(/\+/g, '-') // Sostituisce + con -
+                        .replace(/\//g, '_') // Sostituisce / con _
+                        .replace(/=/g, '');  // Rimuove il padding =
+                } catch (e) {
+                    console.error("Errore nella codifica della stringa:", e);
+                    return str; // Ritorna la stringa originale in caso di errore
+                }
+            }
             
             // --- FIRESTORE FUNCTIONS ---
             function setupTradesListener(userId) {
-                if (state.tradesListener) {
-                    state.tradesListener(); // Rimuove il listener precedente
+                if (tradesListener) {
+                    tradesListener(); // Rimuove il listener precedente
                 }
                 const tradesCollection = collection(db, "users", userId, "trades");
-                state.tradesListener = onSnapshot(tradesCollection, (snapshot) => {
+                tradesListener = onSnapshot(tradesCollection, (snapshot) => {
                     state.trades = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     render();
+                }, (error) => {
+                    console.error("Errore con il listener di Firestore:", error);
                 });
             }
 
             async function addTrade(tradeData) {
-                if (!state.user) return;
-                await addDoc(collection(db, "users", state.user.uid, "trades"), tradeData);
+                if (!state.currentUserId) return;
+                await addDoc(collection(db, "users", state.currentUserId, "trades"), tradeData);
             }
 
             async function updateTrade(tradeId, tradeData) {
-                if (!state.user) return;
-                const tradeRef = doc(db, "users", state.user.uid, "trades", tradeId);
+                if (!state.currentUserId) return;
+                const tradeRef = doc(db, "users", state.currentUserId, "trades", tradeId);
                 await updateDoc(tradeRef, tradeData);
             }
 
             async function deleteTrade(tradeId) {
-                if (!state.user) return;
-                await deleteDoc(doc(db, "users", state.user.uid, "trades", tradeId));
+                if (!state.currentUserId) return;
+                await deleteDoc(doc(db, "users", state.currentUserId, "trades", tradeId));
             }
 
             // --- LOCAL SETTINGS FUNCTIONS (non per i trade) ---
@@ -679,7 +684,6 @@
             };
 
             const calculateTradeProfits = (trade) => {
-                // I prezzi sono già in USD, quindi il profitto calcolato è in USD
                 if (trade.status !== 'closed' || !trade.salePrice) return { ...trade, netProfit: 0, percentageProfit: 0 };
                 const netProfit = (trade.salePrice - trade.purchasePrice) * trade.quantity;
                 const costBasis = trade.purchasePrice * trade.quantity;
@@ -743,7 +747,7 @@
             // --- RENDER FUNCTIONS (COMPONENTI SPECIFICI) ---
 
             function render() {
-                if (state.user) {
+                if (state.currentUserEmail) {
                     const monthNames = translations[state.currentLanguage].monthNames;
                     document.documentElement.lang = state.currentLanguage;
                     document.getElementById('header-actions').innerHTML = renderHeaderActions();
@@ -765,33 +769,14 @@
             }
 
             function renderAuthForm() {
-                const { mode, error, isLoading } = state.auth;
-                const isLogin = mode === 'login';
-
                 return `
+                    <p class="text-center text-gray-300 mb-4">Inserisci la tua email per accedere o creare un account.</p>
                     <form id="auth-form" class="space-y-4">
                         <input type="email" id="auth-email" placeholder="${t('email')}" required class="modal-input">
-                        <input type="password" id="auth-password" placeholder="${t('password')}" required class="modal-input">
-                        
-                        ${isLogin ? `
-                        <div class="flex items-center justify-between">
-                            <div class="flex items-center">
-                                <input id="remember-me" name="remember-me" type="checkbox" class="h-4 w-4 text-yellow-500 focus:ring-yellow-400 border-gray-500 rounded bg-gray-700">
-                                <label for="remember-me" class="ml-2 block text-sm text-gray-300">${t('rememberMe')}</label>
-                            </div>
-                        </div>
-                        ` : ''}
-
-                        ${error ? `<p class="text-red-400 text-sm text-center">${error}</p>` : ''}
-
-                        <button type="submit" class="modal-btn w-full ${isLogin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 hover:bg-gray-500 text-white'}" ${isLoading ? 'disabled' : ''}>
-                            ${isLoading ? `<div class="loader !w-6 !h-6 !border-4"></div>` : (isLogin ? t('login') : t('register'))}
+                        <button type="submit" class="modal-btn w-full bg-yellow-500 hover:bg-yellow-600 text-black" ${state.isLoading ? 'disabled' : ''}>
+                            ${state.isLoading ? `<div class="loader !w-6 !h-6 !border-4"></div>` : t('login')}
                         </button>
                     </form>
-                    <p class="text-center text-sm text-gray-400 mt-4">
-                        ${isLogin ? t('noAccount') : t('haveAccount')}
-                        <button data-action="toggle-auth-form" class="font-semibold text-yellow-400 hover:underline">${isLogin ? t('register') : t('login')}</button>
-                    </p>
                 `;
             }
 
@@ -1155,7 +1140,7 @@
                 const currentSymbol = getCurrencySymbol();
 
                 let userSection = '';
-                if (state.user) {
+                if (state.currentUserEmail) {
                     userSection = `
                         <div class="mt-auto pt-4 border-t border-gray-700">
                             <button data-action="logout" class="w-full flex items-center justify-center gap-2 p-2 rounded-lg text-red-400 hover:bg-red-900/50 transition-colors">
@@ -1325,15 +1310,16 @@
                         handleShowInfo();
                         toggleMenu(false);
                         break;
-                    case 'toggle-auth-form':
-                        state.auth.mode = state.auth.mode === 'login' ? 'register' : 'login';
-                        state.auth.error = null;
-                        render();
-                        loadCredentials();
-                        break;
                     case 'logout':
-                        state.auth = { mode: 'login', error: null, isLoading: false };
-                        signOut(auth);
+                        state.currentUserEmail = null;
+                        state.currentUserId = null;
+                        if (tradesListener) {
+                            tradesListener();
+                            tradesListener = null;
+                        }
+                        state.trades = [];
+                        toggleMenu(false);
+                        showLoginScreen();
                         break;
                 }
             });
@@ -1376,53 +1362,24 @@
                 e.preventDefault();
 
                 if (e.target.id === 'auth-form') {
+                    state.isLoading = true;
+                    render();
+
                     const emailInput = document.getElementById('auth-email');
-                    const passwordInput = document.getElementById('auth-password');
-                    const rememberMeCheckbox = document.getElementById('remember-me');
-                    
                     const email = emailInput.value;
-                    const password = passwordInput.value;
-                    const rememberMe = rememberMeCheckbox?.checked;
-                    const action = state.auth.mode;
-
-                    state.auth.isLoading = true;
-                    state.auth.error = null;
-                    render(); // Mostra il loader e mantiene i valori
-
-                    // Ripristina i valori dopo il render per non perderli
-                    document.getElementById('auth-email').value = email;
-                    document.getElementById('auth-password').value = password;
-                    if (rememberMeCheckbox) {
-                        document.getElementById('remember-me').checked = rememberMe;
+                    if (!email) {
+                        state.isLoading = false;
+                        render();
+                        return;
                     }
 
-                    try {
-                        if (action === 'register') {
-                            await createUserWithEmailAndPassword(auth, email, password);
-                            localStorage.removeItem('tradefolioCredentials');
-                        } else {
-                            await signInWithEmailAndPassword(auth, email, password);
-                            if (rememberMe) {
-                                const credentials = { email, password: btoa(password) }; // Salva la password codificata
-                                localStorage.setItem('tradefolioCredentials', JSON.stringify(credentials));
-                            } else {
-                                localStorage.removeItem('tradefolioCredentials');
-                            }
-                        }
-                        // onAuthStateChanged gestirà il successo
-                    } catch (error) {
-                        console.error("Authentication error:", error.code);
-                        state.auth.error = error.message;
-                        state.auth.isLoading = false;
-                        render(); // Renderizza di nuovo per mostrare l'errore
-
-                        // Ripristina di nuovo i valori dopo il render dell'errore
-                        document.getElementById('auth-email').value = email;
-                        document.getElementById('auth-password').value = password;
-                        if (rememberMeCheckbox) {
-                            document.getElementById('remember-me').checked = rememberMe;
-                        }
-                    }
+                    state.currentUserEmail = email;
+                    state.currentUserId = safeEncode(email);
+                    state.isLoading = false;
+                    
+                    setupTradesListener(state.currentUserId);
+                    loadSettings();
+                    showApp();
                     return;
                 }
 
@@ -1624,15 +1581,15 @@ Peggior Trade
             }
 
             async function handleFetchAiNews() {
-                 if (!state.user || !state.apiKey) {
-                    console.error("Utente non autenticato o API key mancante.");
+                 if (!state.currentUserId || !state.apiKey) {
+                    console.error("Utente non identificato o API key mancante.");
                     return;
                 }
                 
                 state.infoModal = { isOpen: true, title: t('searchingRealTimeNews'), content: '', isLoading: true };
                 render();
 
-                const cacheRef = doc(db, "users", state.user.uid, "cache", "financialNews");
+                const cacheRef = doc(db, "users", state.currentUserId, "cache", "financialNews");
                 
                 try {
                     const docSnap = await getDoc(cacheRef);
@@ -1773,8 +1730,8 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
             }
 
             async function handleFetchEconomicCalendar() {
-                if (!state.user || !state.apiKey) {
-                    console.error("Utente non autenticato o API key mancante.");
+                if (!state.currentUserId || !state.apiKey) {
+                    console.error("Utente non identificato o API key mancante.");
                     return;
                 }
                 
@@ -1785,7 +1742,7 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
                 const monthNames = translations[state.currentLanguage].monthNames;
                 const monthName = monthNames[currentMonthIndex];
                 const cacheKey = `economicCalendar_${currentYear}_${currentMonthIndex}`;
-                const cacheRef = doc(db, "users", state.user.uid, "cache", cacheKey);
+                const cacheRef = doc(db, "users", state.currentUserId, "cache", cacheKey);
 
                 try {
                     const docSnap = await getDoc(cacheRef);
@@ -2110,32 +2067,17 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
             }
             
             // --- UI/AUTH FLOW MANAGEMENT ---
-            function loadCredentials() {
-                const credentials = localStorage.getItem('tradefolioCredentials');
-                if (credentials) {
-                    try {
-                        const { email, password } = JSON.parse(credentials);
-                        const emailInput = document.getElementById('auth-email');
-                        const passwordInput = document.getElementById('auth-password');
-                        const rememberMeCheckbox = document.getElementById('remember-me');
-                        if (emailInput && passwordInput && rememberMeCheckbox) {
-                            emailInput.value = email;
-                            passwordInput.value = atob(password); // Decode password
-                            rememberMeCheckbox.checked = true;
-                        }
-                    } catch (e) {
-                        console.error("Failed to parse saved credentials", e);
-                        localStorage.removeItem('tradefolioCredentials');
-                    }
-                }
-            }
-
             function showApp() {
                 const splashScreen = document.getElementById('splash-screen');
                 const appContainer = document.getElementById('app-container');
                 splashScreen.style.opacity = '0';
                 splashScreen.style.pointerEvents = 'none';
                 appContainer.classList.add('visible');
+
+                Promise.all([fetchTickerData(), fetchFiatRates()]).then(() => {
+                    render();
+                });
+                setInterval(fetchTickerData, 90000);
             }
             
             function showLoginScreen() {
@@ -2145,29 +2087,15 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
                 splashScreen.style.pointerEvents = 'auto';
                 appContainer.classList.remove('visible');
                 render();
-                loadCredentials();
             }
 
             // --- AUTHENTICATION & APP START ---
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    state.user = user;
-                    setupTradesListener(user.uid);
-                    loadSettings();
-                    
-                    Promise.all([fetchTickerData(), fetchFiatRates()]).then(() => {
-                        render(); 
-                        showApp();
-                    });
-                    
-                    setInterval(fetchTickerData, 90000);
-                } else {
-                    state.user = null;
-                    state.trades = [];
-                    if (state.tradesListener) state.tradesListener();
-                    showLoginScreen();
-                }
+            signInAnonymously(auth).catch((error) => {
+                console.error("Accesso anonimo fallito:", error);
+                document.getElementById('auth-container').innerHTML = `<p class="text-red-400 text-center">Connessione fallita. Riprova più tardi.</p>`;
             });
+
+            showLoginScreen();
         });
     </script>
 </body>
