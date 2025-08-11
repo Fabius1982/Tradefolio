@@ -332,10 +332,13 @@
 
     <!-- Splash Screen -->
     <div id="splash-screen" class="splash-screen">
-        <div class="flex-grow flex items-center justify-center">
-             <h1 class="text-5xl font-poppins mb-8">
-                <span class="text-white font-bold trade-line">Trade</span><span class="font-normal" style="color: #FBBF24;">folio</span>
-            </h1>
+        <div class="flex-grow flex items-center justify-center text-center">
+            <div>
+                 <h1 class="text-5xl font-poppins">
+                    <span class="text-white font-bold trade-line">Trade</span><span class="font-normal" style="color: #FBBF24;">folio</span>
+                </h1>
+                <p class="text-sm text-gray-400 mt-2">il tuo dario di trading con IA integrata</p>
+            </div>
         </div>
         <div id="auth-container" class="pb-4 w-full max-w-sm px-4">
             <!-- Auth form will be rendered here by JS -->
@@ -1735,7 +1738,7 @@
                     const borderColor = isBest ? 'border-green-500/30' : 'border-red-500/30';
                     const textColor = isBest ? 'text-green-400' : 'text-red-400';
                     const title = isBest ? 'Miglior Trade' : 'Peggior Trade';
-                    const icon = isBest ? '🏆' : '📉';
+                    const icon = isBest ? '🏆' : '�';
 
                     return `
                         <div class="${bgColor} p-4 rounded-lg border ${borderColor}">
