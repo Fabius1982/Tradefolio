@@ -13,7 +13,12 @@
     <link rel="apple-touch-icon" href="https://placehold.co/192x192/ffffff/000000?text=TF">
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Librerie per il Grafico a Candele -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/luxon@2.3.1/build/global/luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.1.0/dist/chartjs-adapter-luxon.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.1.0/dist/chartjs-chart-financial.min.js"></script>
+    
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
@@ -77,7 +82,7 @@
             border-radius: 0.75rem;
             padding: 0.75rem;
             border: 1px solid #4b5563;
-            min-height: 120px; /* Altezza minima per tutte le colonne, anche quelle vuote */
+            min-height: 150px; /* Altezza minima per tutte le colonne, anche quelle vuote */
         }
 
         /* Stili per gli elementi di trade */
@@ -336,7 +341,7 @@
                 <span class="text-white font-bold trade-line">Trade</span><span class="font-normal" style="color: #FBBF24;">folio</span>
             </h1>
         </div>
-        <div id="auth-container" class="pb-16 w-full max-w-sm px-4">
+        <div id="auth-container" class="pb-4 w-full max-w-sm px-4">
             <!-- Auth form will be rendered here by JS -->
         </div>
     </div>
@@ -397,9 +402,8 @@
 
     <!-- Firebase SDK -->
     <script type="module">
-        // Importa le funzioni necessarie dai moduli SDK di cui hai bisogno
         import { initializeApp } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-app.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
+        import { getAuth, onAuthStateChanged, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, setPersistence, browserLocalPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-auth.js";
         import { getFirestore, collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, getDoc, setDoc } from "https://www.gstatic.com/firebasejs/9.15.0/firebase-firestore.js";
         
         const firebaseConfig = {
@@ -421,20 +425,20 @@
             // --- STATE MANAGEMENT ---
             let state = {
                 trades: [],
+                notes: [],
                 currentYear: new Date().getFullYear(),
                 currentMonthIndex: new Date().getMonth(),
                 tickerData: [],
                 fiatRates: null,
                 apiKey: 'AIzaSyBXkdQjsy5xR6KcFz-Gcqijqh9NTjliT6o', // API Key per Gemini
+                gnewsApiKey: '35d4490e629113e4a2efd30e1eac76b1', // API Key per GNews
                 modal: { isOpen: false, mode: null, data: null },
+                noteModal: { isOpen: false, date: null, text: '' },
                 confirmationModal: { isOpen: false, message: '', onConfirm: null },
                 infoModal: { isOpen: false, title: '', content: '', isLoading: false },
                 converterModal: { isOpen: false },
-                contactModal: { isOpen: false },
                 isMenuOpen: false,
-                currentUserEmail: null,
-                currentUserId: null,
-                isLoading: false,
+                auth: { mode: 'login', error: null, isLoading: false },
                 currentCurrency: 'usd',
                 supportedCurrencies: [
                     { code: 'usd', symbol: '$', name: 'Dollaro USA' },
@@ -460,9 +464,11 @@
                     { code: 'de', name: 'Deutsch', shortName: 'DEU' },
                     { code: 'fr', name: 'Français', shortName: 'FRA' },
                 ],
+                user: null, // Per memorizzare l'utente autenticato
+                tradesListener: null, // Per tenere traccia del listener di Firestore
+                notesListener: null, // Per tenere traccia del listener delle note
             };
             let profitChart = null;
-            let tradesListener = null;
 
             // --- TRANSLATIONS ---
             const translations = {
@@ -505,7 +511,7 @@
                     searchingRealTimeNews: 'Ricerca notizie in tempo reale...',
                     latestFinancialNews: 'Ultime Notizie Finanziarie',
                     error: 'Errore',
-                    errorLoadingNews: "Impossibile caricare le notizie AI in questo momento.",
+                    errorLoadingNews: "Impossibile caricare le notizie in questo momento.",
                     loadingCalendar: 'Caricamento Calendario...',
                     economicCalendar: 'Calendario Economico',
                     errorLoadingCalendar: "Impossibile caricare il calendario in questo momento.",
@@ -520,17 +526,21 @@
                     from: "Da",
                     to: "A",
                     amount: "Importo",
-                    contacts: "Contatti",
-                    sendEmail: "Invia Email",
-                    subject: "Oggetto",
-                    message: "Messaggio",
                     fromCache: "(dalla cache)",
                     searchingLive: "Ricerca dati in tempo reale...",
                     fiatCurrencies: "Valute Fiat",
                     cryptoCurrencies: "Criptovalute",
-                    login: "Entra",
-                    email: "La tua Email",
-                    signOut: "Cambia Account",
+                    login: "Accedi",
+                    register: "Registrati",
+                    email: "Email",
+                    password: "Password",
+                    noAccount: "Non hai un account?",
+                    haveAccount: "Hai già un account?",
+                    signOut: "Esci",
+                    rememberMe: "Rimani connesso",
+                    note: "Nota",
+                    saveNote: "Salva Nota",
+                    noteFor: "Nota per il"
                 },
                 en: {
                     monthNames: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
@@ -571,7 +581,7 @@
                     searchingRealTimeNews: 'Searching for real-time news...',
                     latestFinancialNews: 'Latest Financial News',
                     error: 'Error',
-                    errorLoadingNews: "Could not load AI news at this time.",
+                    errorLoadingNews: "Could not load news at this time.",
                     loadingCalendar: 'Loading Calendar...',
                     economicCalendar: 'Economic Calendar',
                     errorLoadingCalendar: "Could not load the calendar at this time.",
@@ -586,67 +596,75 @@
                     from: "From",
                     to: "To",
                     amount: "Amount",
-                    contacts: "Contacts",
-                    sendEmail: "Send Email",
-                    subject: "Subject",
-                    message: "Message",
                     fromCache: "(from cache)",
                     searchingLive: "Searching for live data...",
                     fiatCurrencies: "Fiat Currencies",
                     cryptoCurrencies: "Cryptocurrencies",
-                    login: "Enter",
-                    email: "Your Email",
-                    signOut: "Change Account",
+                    login: "Login",
+                    register: "Register",
+                    email: "Email",
+                    password: "Password",
+                    noAccount: "Don't have an account?",
+                    haveAccount: "Already have an account?",
+                    signOut: "Sign Out",
+                    rememberMe: "Stay logged in",
+                    note: "Note",
+                    saveNote: "Save Note",
+                    noteFor: "Note for"
                 }
             };
 
             const t = (key) => {
                 return translations[state.currentLanguage]?.[key] || translations['it'][key] || key;
             };
-
-            // --- UTILITY FUNCTIONS ---
-            function safeEncode(str) {
-                try {
-                    // Rimuove caratteri non validi per btoa e normalizza
-                    const normalizedStr = str.trim().toLowerCase();
-                    return btoa(normalizedStr)
-                        .replace(/\+/g, '-') // Sostituisce + con -
-                        .replace(/\//g, '_') // Sostituisce / con _
-                        .replace(/=/g, '');  // Rimuove il padding =
-                } catch (e) {
-                    console.error("Errore nella codifica della stringa:", e);
-                    return str; // Ritorna la stringa originale in caso di errore
-                }
-            }
             
             // --- FIRESTORE FUNCTIONS ---
             function setupTradesListener(userId) {
-                if (tradesListener) {
-                    tradesListener(); // Rimuove il listener precedente
+                if (state.tradesListener) {
+                    state.tradesListener(); // Rimuove il listener precedente
                 }
                 const tradesCollection = collection(db, "users", userId, "trades");
-                tradesListener = onSnapshot(tradesCollection, (snapshot) => {
+                state.tradesListener = onSnapshot(tradesCollection, (snapshot) => {
                     state.trades = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
                     render();
-                }, (error) => {
-                    console.error("Errore con il listener di Firestore:", error);
                 });
             }
 
+            function setupNotesListener(userId) {
+                if (state.notesListener) {
+                    state.notesListener();
+                }
+                const notesCollection = collection(db, "users", userId, "notes");
+                state.notesListener = onSnapshot(notesCollection, (snapshot) => {
+                    state.notes = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                    render();
+                });
+            }
+
+            async function saveNote(date, text) {
+                if (!state.user) return;
+                const noteRef = doc(db, "users", state.user.uid, "notes", date);
+                if (text.trim() === '') {
+                    await deleteDoc(noteRef);
+                } else {
+                    await setDoc(noteRef, { text: text });
+                }
+            }
+
             async function addTrade(tradeData) {
-                if (!state.currentUserId) return;
-                await addDoc(collection(db, "users", state.currentUserId, "trades"), tradeData);
+                if (!state.user) return;
+                await addDoc(collection(db, "users", state.user.uid, "trades"), tradeData);
             }
 
             async function updateTrade(tradeId, tradeData) {
-                if (!state.currentUserId) return;
-                const tradeRef = doc(db, "users", state.currentUserId, "trades", tradeId);
+                if (!state.user) return;
+                const tradeRef = doc(db, "users", state.user.uid, "trades", tradeId);
                 await updateDoc(tradeRef, tradeData);
             }
 
             async function deleteTrade(tradeId) {
-                if (!state.currentUserId) return;
-                await deleteDoc(doc(db, "users", state.currentUserId, "trades", tradeId));
+                if (!state.user) return;
+                await deleteDoc(doc(db, "users", state.user.uid, "trades", tradeId));
             }
 
             // --- LOCAL SETTINGS FUNCTIONS (non per i trade) ---
@@ -698,7 +716,7 @@
                 const dayColumn = document.querySelector(`.day-column[data-date="${dateString}"]`);
                 if (!dayColumn) return;
 
-                const { trades } = state;
+                const { trades, notes } = state;
                 const currencySymbol = getCurrencySymbol();
                 const closedOnThisDay = trades.filter(t => t.saleDate === dateString);
                 const openedOnThisDay = trades.filter(t => t.purchaseDate === dateString && t.status === 'open');
@@ -740,16 +758,30 @@
                         </div>`}).join('')}
                 `;
                 
-                const tradeContainer = dayColumn.querySelector('.flex-grow');
-                if (tradeContainer) {
-                    tradeContainer.innerHTML = tradesHTML;
-                }
+                const note = notes.find(n => n.id === dateString);
+                const noteIconSVG = note ?
+                    `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor"><path d="M17.414 2.586a2 2 0 00-2.828 0L7 10.172V13h2.828l7.586-7.586a2 2 0 000-2.828z" /><path fill-rule="evenodd" d="M2 6a2 2 0 012-2h4a1 1 0 010 2H4v10h10v-4a1 1 0 112 0v4a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" clip-rule="evenodd" /></svg>` :
+                    `<svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" /></svg>`;
+
+                const noteButtonHTML = `
+                    <div class="mt-2 border-t border-gray-600 pt-2">
+                        <button data-action="open-note-modal" data-date="${dateString}" class="w-full flex items-center justify-center gap-2 text-xs text-gray-300 hover:bg-gray-600 p-1 rounded-md transition-colors">
+                            ${noteIconSVG}
+                            <span>${t('note')}</span>
+                        </button>
+                    </div>`;
+
+                const tradeContainer = dayColumn.querySelector('.trade-container');
+                if (tradeContainer) tradeContainer.innerHTML = tradesHTML;
+                
+                const noteContainer = dayColumn.querySelector('.note-container');
+                if (noteContainer) noteContainer.innerHTML = noteButtonHTML;
             }
 
             // --- RENDER FUNCTIONS (COMPONENTI SPECIFICI) ---
 
             function render() {
-                if (state.currentUserEmail) {
+                if (state.user) {
                     const monthNames = translations[state.currentLanguage].monthNames;
                     document.documentElement.lang = state.currentLanguage;
                     document.getElementById('header-actions').innerHTML = renderHeaderActions();
@@ -771,14 +803,34 @@
             }
 
             function renderAuthForm() {
+                const { mode, error, isLoading } = state.auth;
+                const isLogin = mode === 'login';
+
                 return `
-                    <p class="text-center text-gray-300 mb-4">Inserisci la tua email per accedere o creare un account.</p>
                     <form id="auth-form" class="space-y-4">
                         <input type="email" id="auth-email" placeholder="${t('email')}" required class="modal-input">
-                        <button type="submit" class="modal-btn w-full bg-yellow-500 hover:bg-yellow-600 text-black" ${state.isLoading ? 'disabled' : ''}>
-                            ${state.isLoading ? `<div class="loader !w-6 !h-6 !border-4"></div>` : t('login')}
+                        <input type="password" id="auth-password" placeholder="${t('password')}" required class="modal-input">
+                        
+                        ${isLogin ? `
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center">
+                                <input id="stay-logged-in" name="stay-logged-in" type="checkbox" class="h-4 w-4 text-yellow-500 focus:ring-yellow-400 border-gray-500 rounded bg-gray-700">
+                                <label for="stay-logged-in" class="ml-2 block text-sm text-gray-300">${t('rememberMe')}</label>
+                            </div>
+                        </div>
+                        ` : ''}
+
+                        ${error ? `<p class="text-red-400 text-sm text-center">${error}</p>` : ''}
+
+                        <button type="submit" class="modal-btn w-full ${isLogin ? 'bg-yellow-500 hover:bg-yellow-600 text-black' : 'bg-gray-600 hover:bg-gray-500 text-white'}" ${isLoading ? 'disabled' : ''}>
+                            ${isLoading ? `<div class="loader !w-6 !h-6 !border-4"></div>` : (isLogin ? t('login') : t('register'))}
                         </button>
                     </form>
+                    <p class="text-center text-sm text-gray-400 mt-4">
+                        ${isLogin ? t('noAccount') : t('haveAccount')}
+                        <button data-action="toggle-auth-form" class="font-semibold text-yellow-400 hover:underline">${isLogin ? t('register') : t('login')}</button>
+                    </p>
+                    <p class="text-xs text-gray-500 mt-8 text-center whitespace-nowrap">Copyright © 2025 Fabio Amendola. Tutti i diritti riservati. ver. 6.01</p>
                 `;
             }
 
@@ -794,7 +846,7 @@
                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 256 256"><path d="M208,32H184V24a8,8,0,0,0-16,0v8H88V24a8,8,0,0,0-16,0v8H48A16,16,0,0,0,32,48V208a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V48A16,16,0,0,0,208,32ZM208,48V72H48V48ZM48,208V88H208V208Z"></path></svg>
                        <span class="text-xs mt-1">${t('calendar')}</span>
                     </button>
-                    <button class="flex flex-col items-center w-16 text-gray-300 hover:text-white transition-colors" data-action="fetch-ai-news" aria-label="${t('news')}">
+                    <button class="flex flex-col items-center w-16 text-gray-300 hover:text-white transition-colors" data-action="fetch-news" aria-label="${t('news')}">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 256 256"><path d="M208,24H72A16,16,0,0,0,56,40V216a16,16,0,0,0,16,16H208a16,16,0,0,0,16-16V40A16,16,0,0,0,208,24Zm0,192H72V40H208V216ZM40,56H24A16,16,0,0,0,8,72V200a16,16,0,0,0,16,16H40a8,8,0,0,0,0-16H32V72H40a8,8,0,0,0,0-16ZM104,80a8,8,0,0,1,8-8h80a8,8,0,0,1,0,16H112A8,8,0,0,1,104,80Zm88,40H112a8,8,0,0,0,0,16h80a8,8,0,0,0,0-16Zm0,48H112a8,8,0,0,0,0,16h80a8,8,0,0,0,0-16Z"></path></svg>
                         <span class="text-xs mt-1">${t('news')}</span>
                     </button>
@@ -879,7 +931,8 @@
                                 <div class="font-bold text-xl text-white">${day}</div>
                                 <div class="text-sm text-gray-400">${dayName}</div>
                             </div>
-                            <div class="flex-grow"></div>
+                            <div class="flex-grow trade-container"></div> <!-- Trades go here -->
+                            <div class="note-container"></div> <!-- Note button goes here -->
                         </div>
                     `;
                 }
@@ -917,63 +970,122 @@
                 const chartCanvas = document.getElementById('profitChart');
                 if (!chartCanvas) return;
                 const ctx = chartCanvas.getContext('2d');
-                
+
                 const { currentYear, currentMonthIndex, trades } = state;
                 const currencySymbol = getCurrencySymbol();
-                const daysInMonth = getDaysInMonth(currentYear, currentMonthIndex);
-                const closedTrades = trades.filter(t => t.status === 'closed');
-                const dailySummaries = new Map();
-                closedTrades.forEach(trade => {
-                    const saleDate = trade.saleDate;
-                    if (!saleDate || !saleDate.startsWith(`${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`)) return;
-                    if (!dailySummaries.has(saleDate)) { dailySummaries.set(saleDate, { netProfit: 0 }); }
-                    dailySummaries.get(saleDate).netProfit += (calculateTradeProfits(trade).netProfit || 0);
-                });
-                const chartData = Array.from({ length: daysInMonth }, (_, day) => {
-                    const dateString = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}-${String(day + 1).padStart(2, '0')}`;
-                    const profitUSD = dailySummaries.get(dateString)?.netProfit || 0;
-                    return convertToCurrentCurrency(profitUSD);
-                });
-                const chartLabels = Array.from({ length: daysInMonth }, (_, day) => day + 1);
 
-                const gradient = ctx.createLinearGradient(0, 0, 0, chartCanvas.offsetHeight);
-                gradient.addColorStop(0, 'rgba(251, 191, 36, 1)'); // Giallo
-                gradient.addColorStop(1, 'rgba(239, 68, 68, 1)');   // Rosso
-
-                if (profitChart) { profitChart.destroy(); }
+                // 1. Calcola il profitto cumulativo fino all'inizio del mese corrente
+                let startingProfit = trades
+                    .filter(t => {
+                        if (t.status !== 'closed' || !t.saleDate) return false;
+                        const saleDate = new Date(t.saleDate);
+                        const monthStartDate = new Date(currentYear, currentMonthIndex, 1);
+                        return saleDate < monthStartDate;
+                    })
+                    .reduce((acc, t) => acc + (calculateTradeProfits(t).netProfit || 0), 0);
                 
+                let cumulativeProfit = startingProfit;
+
+                const daysInMonth = getDaysInMonth(currentYear, currentMonthIndex);
+                const chartData = [];
+
+                // 2. Itera attraverso ogni giorno del mese per costruire i dati OHLC (Open, High, Low, Close)
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const dateString = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    
+                    const tradesOnThisDay = trades
+                        .filter(t => t.status === 'closed' && t.saleDate === dateString)
+                        .map(calculateTradeProfits);
+
+                    const open = cumulativeProfit;
+                    let high = open;
+                    let low = open;
+                    let tempCumulative = open;
+
+                    // Calcola H, L, C basandosi sui trade del giorno
+                    tradesOnThisDay.forEach(trade => {
+                        tempCumulative += trade.netProfit;
+                        high = Math.max(high, tempCumulative);
+                        low = Math.min(low, tempCumulative);
+                    });
+                    
+                    const close = tempCumulative;
+                    
+                    chartData.push({
+                        x: luxon.DateTime.fromISO(dateString).toMillis(),
+                        o: convertToCurrentCurrency(open),
+                        h: convertToCurrentCurrency(high),
+                        l: convertToCurrentCurrency(low),
+                        c: convertToCurrentCurrency(close)
+                    });
+
+                    cumulativeProfit = close; // Aggiorna il profitto cumulativo per il giorno successivo
+                }
+
+                if (profitChart) {
+                    profitChart.destroy();
+                }
+
+                // 3. Crea il grafico a candele
                 profitChart = new Chart(ctx, {
-                    type: 'line',
-                    data: { 
-                        labels: chartLabels, 
-                        datasets: [{ 
-                            label: t('netProfit'), 
-                            data: chartData, 
-                            borderColor: gradient,
-                            backgroundColor: 'rgba(251, 191, 36, 0.1)', 
-                            fill: true, 
-                            tension: 0.4, 
-                            borderWidth: 2, 
-                            pointRadius: 2, 
-                            pointBackgroundColor: '#FBBF24' 
-                        }] 
+                    type: 'candlestick',
+                    data: {
+                        datasets: [{
+                            label: `${t('netProfit')} (${currencySymbol})`,
+                            data: chartData,
+                            borderColor: function(context) {
+                                const o = context.raw.o;
+                                const c = context.raw.c;
+                                return c >= o ? '#22c55e' : '#ef4444';
+                            },
+                            backgroundColor: function(context) {
+                                const o = context.raw.o;
+                                const c = context.raw.c;
+                                return c >= o ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)';
+                            }
+                        }]
                     },
-                    options: { 
-                        responsive: true, 
-                        maintainAspectRatio: false, 
-                        scales: { 
-                            y: { ticks: { color: '#9CA3AF', font: { size: 10 } }, grid: { color: '#4b5563' } }, 
-                            x: { ticks: { color: '#9CA3AF', font: { size: 10 } }, grid: { display: false } } 
-                        }, 
-                        plugins: { 
-                            legend: { display: false }, 
-                            tooltip: { 
-                                backgroundColor: '#1f2937', 
-                                titleColor: '#F3F4F6', 
-                                bodyColor: '#D1D5DB', 
-                                callbacks: { label: (c) => `${t('day')} ${c.label}: ${c.raw.toFixed(2)} ${currencySymbol}` } 
-                            } 
-                        } 
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                backgroundColor: '#1f2937',
+                                titleColor: '#F3F4F6',
+                                bodyColor: '#D1D5DB',
+                                callbacks: {
+                                    label: function(context) {
+                                        const o = context.raw.o.toFixed(2);
+                                        const h = context.raw.h.toFixed(2);
+                                        const l = context.raw.l.toFixed(2);
+                                        const c = context.raw.c.toFixed(2);
+                                        return `A: ${o} | M: ${h} | m: ${l} | C: ${c}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                type: 'time',
+                                time: {
+                                    unit: 'day',
+                                    tooltipFormat: 'dd LLL yyyy'
+                                },
+                                grid: { display: false },
+                                ticks: { color: '#9CA3AF', font: { size: 10 } }
+                            },
+                            y: {
+                                grid: { color: '#4b5563' },
+                                ticks: {
+                                    color: '#9CA3AF',
+                                    font: { size: 10 },
+                                    callback: function(value) {
+                                        return value.toFixed(0) + ' ' + currencySymbol;
+                                    }
+                                }
+                            }
+                        }
                     }
                 });
             }
@@ -981,10 +1093,10 @@
             function renderAllModals() {
                 let html = '';
                 if (state.modal.isOpen) html += renderTradeModal();
+                if (state.noteModal.isOpen) html += renderNoteModal();
                 if (state.confirmationModal.isOpen) html += renderConfirmationModal();
                 if (state.infoModal.isOpen) html += renderInfoModal();
                 if (state.converterModal.isOpen) html += renderConverterModal();
-                if (state.contactModal.isOpen) html += renderContactModal();
                 return html;
             }
 
@@ -1021,6 +1133,23 @@
                 return `<div class="modal-overlay"><div class="modal-content max-w-md"><button class="absolute top-3 right-4 text-3xl font-light text-gray-400 hover:text-white" data-action="close-modal">&times;</button><form id="trade-form" class="modal-body">${content}</form></div></div>`;
             }
 
+            function renderNoteModal() {
+                const { date, text } = state.noteModal;
+                const formattedDate = formatDate(date);
+                return `<div class="modal-overlay">
+                            <div class="modal-content max-w-md">
+                                <button class="absolute top-3 right-4 text-3xl font-light text-gray-400 hover:text-white" data-action="close-note-modal">&times;</button>
+                                <form id="note-form" class="modal-body">
+                                    <h2 class="text-lg font-bold mb-3 text-white">${t('noteFor')} ${formattedDate}</h2>
+                                    <textarea id="note-text" class="modal-input" rows="8" placeholder="Scrivi qui la tua nota...">${text}</textarea>
+                                    <div class="flex justify-end mt-4">
+                                        <button type="submit" class="modal-btn bg-yellow-500 hover:bg-yellow-600 text-black">${t('saveNote')}</button>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>`;
+            }
+
             function renderConfirmationModal() {
                 return `<div class="modal-overlay"><div class="modal-content max-w-md"><h2 class="text-xl font-bold mb-4 text-white">${t('confirmRequest')}</h2><p class="text-gray-300 mb-6">${t('deleteConfirmMsg')}</p><div class="flex justify-end gap-4"><button class="modal-btn bg-gray-600 hover:bg-gray-500" data-action="cancel-delete">${t('cancel')}</button><button class="modal-btn bg-red-600 hover:bg-red-700" data-action="confirm-delete">${t('confirm')}</button></div></div></div>`;
             }
@@ -1034,7 +1163,7 @@
                     modalBody = `<div class="text-sm leading-relaxed">${content || ""}</div>`;
                 }
 
-                const isNewsOrReportModal = title === t('latestFinancialNews') || title.startsWith(t('monthlyReportFor')) || title.startsWith(t('aiAnalysis')) || title.startsWith(t("termsAndConditions")) || title.startsWith(t("economicCalendar"));
+                const isNewsOrReportModal = title.includes(t('latestFinancialNews')) || title.startsWith(t('monthlyReportFor')) || title.startsWith(t('aiAnalysis')) || title.startsWith(t("termsAndConditions")) || title.startsWith(t("economicCalendar"));
                 const modalWidthClass = isNewsOrReportModal ? 'max-w-2xl' : 'max-w-md';
 
                 return `<div class="modal-overlay">
@@ -1100,32 +1229,6 @@
                     </div>
                 `;
             }
-            
-            function renderContactModal() {
-                return `
-                    <div class="modal-overlay">
-                        <div class="modal-content max-w-lg">
-                            <div class="flex justify-between items-center mb-4 pb-4 border-b border-gray-700">
-                                <h2 class="text-xl font-bold text-white">${t('contacts')}</h2>
-                                <button class="text-3xl font-light text-gray-400 hover:text-white" data-action="close-contact-modal">&times;</button>
-                            </div>
-                            <div id="contact-form" class="modal-body space-y-4">
-                                <div>
-                                    <label for="contact-subject" class="block mb-2 text-sm font-medium text-gray-300">${t('subject')}</label>
-                                    <input type="text" id="contact-subject" class="modal-input" placeholder="Informazioni su Tradefolio">
-                                </div>
-                                <div>
-                                    <label for="contact-message" class="block mb-2 text-sm font-medium text-gray-300">${t('message')}</label>
-                                    <textarea id="contact-message" rows="6" class="modal-input" placeholder="Scrivi qui il tuo messaggio..."></textarea>
-                                </div>
-                                <div class="flex justify-end mt-4">
-                                    <button data-action="send-email" class="modal-btn bg-yellow-500 hover:bg-yellow-600 text-black">${t('sendEmail')}</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }
 
             function renderSideMenu() {
                 const menuContainer = document.getElementById('side-menu');
@@ -1142,7 +1245,7 @@
                 const currentSymbol = getCurrencySymbol();
 
                 let userSection = '';
-                if (state.currentUserEmail) {
+                if (state.user) {
                     userSection = `
                         <div class="mt-auto pt-4 border-t border-gray-700">
                             <button data-action="logout" class="w-full flex items-center justify-center gap-2 p-2 rounded-lg text-red-400 hover:bg-red-900/50 transition-colors">
@@ -1194,10 +1297,6 @@
                             <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="currentColor" viewBox="0 0 256 256"><path d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Zm16-40a8,8,0,0,1-8,8,16,16,0,0,1-16-16V128a8,8,0,0,1,16,0v40A8,8,0,0,1,144,176ZM112,88a12,12,0,1,1,12,12A12,12,0,0,1,112,88Z"></path></svg>
                             <span class="font-medium">${t('infoAndTerms')}</span>
                         </button>
-                        <button data-action="open-contact" class="flex items-center gap-3 p-2 rounded-lg text-gray-200 hover:bg-gray-700 transition-colors w-full text-left">
-                            <span class="text-xl h-6 w-6 flex items-center justify-center">✉️</span>
-                            <span class="font-medium">${t('contacts')}</span>
-                        </button>
                     </nav>
                     ${userSection}
                 `;
@@ -1209,9 +1308,9 @@
                 if (!target) {
                     if (e.target.classList.contains('modal-overlay')) {
                         state.modal.isOpen = false;
+                        state.noteModal.isOpen = false;
                         state.confirmationModal.isOpen = false;
                         state.converterModal.isOpen = false;
-                        state.contactModal.isOpen = false;
                         if (!state.infoModal.isLoading) state.infoModal.isOpen = false;
                         render();
                     }
@@ -1222,7 +1321,7 @@
                 }
                 
                 const action = target.dataset.action;
-                const { mode, tradeId } = target.dataset;
+                const { mode, tradeId, date } = target.dataset;
 
                 switch(action) {
                     case 'prev-year':
@@ -1258,6 +1357,11 @@
                         state.modal = { isOpen: true, mode, data: { tradeId } };
                         render();
                         break;
+                    case 'open-note-modal':
+                        const existingNote = state.notes.find(n => n.id === date);
+                        state.noteModal = { isOpen: true, date: date, text: existingNote ? existingNote.text : '' };
+                        render();
+                        break;
                     case 'delete-trade':
                         state.confirmationModal = { isOpen: true, message: t('deleteConfirmMsg'), onConfirm: () => deleteTrade(tradeId) };
                         render();
@@ -1271,11 +1375,11 @@
                     case 'cancel-delete':
                     case 'close-info-modal':
                     case 'close-converter-modal':
-                    case 'close-contact-modal':
+                    case 'close-note-modal':
                         state.modal.isOpen = false;
+                        state.noteModal.isOpen = false;
                         state.confirmationModal.isOpen = false;
                         state.converterModal.isOpen = false;
-                        state.contactModal.isOpen = false;
                         if (!state.infoModal.isLoading) state.infoModal.isOpen = false;
                         render();
                         break;
@@ -1292,16 +1396,8 @@
                     case 'swap-currencies':
                         handleSwapCurrencies();
                         break;
-                    case 'open-contact':
-                        state.contactModal.isOpen = true;
-                        render();
-                        toggleMenu(false);
-                        break;
-                    case 'send-email':
-                        handleSendEmail();
-                        break;
                     case 'generate-monthly-report': handleGenerateMonthlyReport(); break;
-                    case 'fetch-ai-news': handleFetchAiNews(); break;
+                    case 'fetch-news': handleFetchNews(); break;
                     case 'download-csv': 
                         handleDownloadCsv(); 
                         toggleMenu(false);
@@ -1312,16 +1408,15 @@
                         handleShowInfo();
                         toggleMenu(false);
                         break;
+                    case 'toggle-auth-form':
+                        state.auth.mode = state.auth.mode === 'login' ? 'register' : 'login';
+                        state.auth.error = null;
+                        render();
+                        loadCredentials();
+                        break;
                     case 'logout':
-                        state.currentUserEmail = null;
-                        state.currentUserId = null;
-                        if (tradesListener) {
-                            tradesListener();
-                            tradesListener = null;
-                        }
-                        state.trades = [];
-                        toggleMenu(false);
-                        showLoginScreen();
+                        state.auth = { mode: 'login', error: null, isLoading: false };
+                        signOut(auth);
                         break;
                 }
             });
@@ -1364,28 +1459,54 @@
                 e.preventDefault();
 
                 if (e.target.id === 'auth-form') {
-                    // Prendi il valore PRIMA di ri-renderizzare
                     const emailInput = document.getElementById('auth-email');
-                    const email = emailInput.value.trim();
+                    const passwordInput = document.getElementById('auth-password');
+                    const stayLoggedInCheckbox = document.getElementById('stay-logged-in');
                     
-                    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-                    if (!email || !emailRegex.test(email)) {
-                        // Aggiungi un feedback visivo per l'errore se vuoi
-                        emailInput.style.borderColor = 'red';
-                        return;
+                    const email = emailInput.value;
+                    const password = passwordInput.value;
+                    const stayLoggedIn = stayLoggedInCheckbox?.checked;
+                    const action = state.auth.mode;
+
+                    state.auth.isLoading = true;
+                    state.auth.error = null;
+                    render(); 
+
+                    document.getElementById('auth-email').value = email;
+                    document.getElementById('auth-password').value = password;
+                    if (stayLoggedInCheckbox) {
+                        document.getElementById('stay-logged-in').checked = stayLoggedIn;
                     }
 
-                    state.isLoading = true;
-                    render(); // Ora è sicuro renderizzare il loader
+                    try {
+                        if (action === 'register') {
+                            await setPersistence(auth, browserLocalPersistence);
+                            await createUserWithEmailAndPassword(auth, email, password);
+                            localStorage.removeItem('tradefolioCredentials');
+                        } else {
+                            const persistenceType = stayLoggedIn ? browserLocalPersistence : browserSessionPersistence;
+                            await setPersistence(auth, persistenceType);
+                            await signInWithEmailAndPassword(auth, email, password);
+                            
+                            if (stayLoggedIn) {
+                                const credentials = { email, password: btoa(password) };
+                                localStorage.setItem('tradefolioCredentials', JSON.stringify(credentials));
+                            } else {
+                                localStorage.removeItem('tradefolioCredentials');
+                            }
+                        }
+                    } catch (error) {
+                        console.error("Authentication error:", error.code, error.message);
+                        state.auth.error = error.message;
+                        state.auth.isLoading = false;
+                        render(); 
 
-                    // Imposta lo stato e procedi
-                    state.currentUserEmail = email;
-                    state.currentUserId = safeEncode(email);
-                    state.isLoading = false;
-                    
-                    setupTradesListener(state.currentUserId);
-                    loadSettings();
-                    showApp();
+                        document.getElementById('auth-email').value = email;
+                        document.getElementById('auth-password').value = password;
+                        if (stayLoggedInCheckbox) {
+                            document.getElementById('stay-logged-in').checked = stayLoggedIn;
+                        }
+                    }
                     return;
                 }
 
@@ -1433,6 +1554,14 @@
                     }
                     
                     state.modal.isOpen = false;
+                    render();
+                }
+
+                if (e.target.id === 'note-form') {
+                    const date = state.noteModal.date;
+                    const text = document.getElementById('note-text').value;
+                    await saveNote(date, text);
+                    state.noteModal.isOpen = false;
                     render();
                 }
             });
@@ -1545,8 +1674,8 @@ Peggior Trade
                 document.body.removeChild(link);
             }
 
-            // --- AI NEWS FUNCTIONS ---
-            function formatNews(newsItems, fromCache = false) {
+            // --- GNEWS FUNCTIONS ---
+            function formatNews(newsItems, fromCache = false, cacheDate = null) {
                 if (!newsItems || newsItems.length === 0) {
                     return '<p class="text-gray-400">Nessuna notizia disponibile al momento.</p>';
                 }
@@ -1563,7 +1692,7 @@ Peggior Trade
                 let html = '';
                 for (const category in groupedNews) {
                     html += `<div class="mb-6">
-                                <h3 class="text-lg font-semibold text-yellow-400 mb-3 border-b border-gray-700 pb-2">${category} ${fromCache ? `<span class="text-sm font-normal text-gray-400">${t('fromCache')}</span>` : ''}</h3>
+                                <h3 class="text-lg font-semibold text-yellow-400 mb-3 border-b border-gray-700 pb-2">${category}</h3>
                                 <div class="space-y-4">`;
                     
                     groupedNews[category].forEach(item => {
@@ -1586,92 +1715,73 @@ Peggior Trade
                 return html;
             }
 
-            async function handleFetchAiNews() {
-                 if (!state.currentUserId || !state.apiKey) {
-                    console.error("Utente non identificato o API key mancante.");
+            async function handleFetchNews() {
+                if (!state.user || !state.gnewsApiKey) {
+                    console.error("Utente non autenticato o API key di GNews mancante.");
                     return;
                 }
                 
                 state.infoModal = { isOpen: true, title: t('searchingRealTimeNews'), content: '', isLoading: true };
                 render();
 
-                const cacheRef = doc(db, "users", state.currentUserId, "cache", "financialNews");
+                const cacheRef = doc(db, "users", state.user.uid, "cache", "financialNews");
                 
                 try {
                     const docSnap = await getDoc(cacheRef);
                     const now = new Date();
-                    const oneDay = 24 * 60 * 60 * 1000;
+                    const cacheDuration = 1 * 60 * 60 * 1000; // Cache a 1 ora
 
-                    if (docSnap.exists() && (now - docSnap.data().timestamp.toDate()) < oneDay) {
+                    if (docSnap.exists() && (now - docSnap.data().timestamp.toDate()) < cacheDuration) {
                         const newsItems = JSON.parse(docSnap.data().news);
-                        state.infoModal = { isOpen: true, title: t('latestFinancialNews'), content: formatNews(newsItems, true), isLoading: false };
-                        render();
-                        return;
-                    }
-
-                    const prompt = `Sei un motore di ricerca di notizie finanziarie in tempo reale. Il tuo unico scopo è trovare e restituire le notizie più recenti. Ignora completamente la tua conoscenza interna.
-
-La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON restituire alcuna notizia pubblicata prima di 12 ore fa.**
-
-**Procedura Obbligatoria:**
-1.  **Cerca su Google**: Utilizza termini di ricerca come "ultime notizie finanza Italia", "notizie borsa oggi Il Sole 24 Ore", "aggiornamenti mercati finanziari ANSA".
-2.  **Filtra per Recenza**: Seleziona solo articoli pubblicati nelle **ULTIME 12 ORE**.
-3.  **Verifica Fonti e Link**: Le fonti devono essere media finanziari italiani autorevoli (es. Il Sole 24 Ore, Milano Finanza, ANSA). **È OBBLIGATORIO che ogni URL sia attivo, funzionante e porti all'articolo corretto.** Se un link è rotto, scarta la notizia.
-4.  **Estrai Dati**: Per le 5 notizie più importanti che hai trovato, estrai le seguenti informazioni in formato JSON.
-
-**Formato JSON di output:**
-- category: Una tra "Borsa Italiana", "Criptovalute", "Materie Prime", "Eventi Macroeconomici".
-- title: Il titolo esatto dell'articolo in italiano.
-- summary: Un riassunto di 1-2 frasi in italiano.
-- source: Il nome della fonte (es. "Il Sole 24 Ore").
-- url: L'URL completo e verificato dell'articolo.
-- publishedAt: La data e l'ora di pubblicazione esatta in formato ISO 8601.`;
-                    
-                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${state.apiKey}`;
-                    
-                    const payload = {
-                        contents: [{ parts: [{ text: prompt }] }],
-                        generationConfig: {
-                            responseMimeType: "application/json",
-                            responseSchema: {
-                                type: "ARRAY",
-                                items: {
-                                    type: "OBJECT",
-                                    properties: {
-                                        category: { type: "STRING" },
-                                        title: { type: "STRING" },
-                                        summary: { type: "STRING" },
-                                        source: { type: "STRING" },
-                                        url: { type: "STRING" },
-                                        publishedAt: { type: "STRING" }
-                                    },
-                                    required: ["category", "title", "summary", "source", "url", "publishedAt"]
-                                }
-                            }
-                        }
-                    };
-
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
-
-                    if (!response.ok) throw new Error(`API fallita: ${response.status}`);
-
-                    const result = await response.json();
-                    const newsText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    
-                    if (newsText) {
-                        const newsItems = JSON.parse(newsText);
-                        await setDoc(cacheRef, { news: JSON.stringify(newsItems), timestamp: new Date() });
-                        state.infoModal = { isOpen: true, title: t('latestFinancialNews'), content: formatNews(newsItems, false), isLoading: false };
+                        const cachedDate = docSnap.data().timestamp.toDate();
+                        const formattedCacheDate = cachedDate.toLocaleString('it-IT', { hour: '2-digit', minute: '2-digit' });
+                        const titleWithCacheInfo = `${t('latestFinancialNews')} <span class="text-sm font-normal text-gray-400"> (Cache delle ${formattedCacheDate})</span>`;
+                        
+                        state.infoModal = { isOpen: true, title: titleWithCacheInfo, content: formatNews(newsItems, true, cachedDate), isLoading: false };
                     } else {
-                        throw new Error("Nessun contenuto ricevuto dall'API.");
-                    }
+                        const cryptoQuery = encodeURIComponent('criptovalute OR bitcoin OR ethereum');
+                        const financeQuery = encodeURIComponent('finanza internazionale OR mercati globali');
+                        
+                        const cryptoUrl = `https://gnews.io/api/v4/search?q=${cryptoQuery}&lang=it&sortby=publishedAt&token=${state.gnewsApiKey}`;
+                        const financeUrl = `https://gnews.io/api/v4/search?q=${financeQuery}&lang=it&sortby=publishedAt&token=${state.gnewsApiKey}`;
 
+                        const [cryptoResponse, financeResponse] = await Promise.all([
+                            fetch(cryptoUrl),
+                            fetch(financeUrl)
+                        ]);
+
+                        if (!cryptoResponse.ok || !financeResponse.ok) {
+                            throw new Error(`GNews API fallita: Crypto Status ${cryptoResponse.status}, Finance Status ${financeResponse.status}`);
+                        }
+
+                        const cryptoData = await cryptoResponse.json();
+                        const financeData = await financeResponse.json();
+
+                        const cryptoArticles = cryptoData.articles.map(a => ({
+                            category: 'Criptovalute',
+                            title: a.title,
+                            summary: a.description,
+                            source: a.source.name,
+                            url: a.url,
+                            publishedAt: a.publishedAt
+                        }));
+
+                        const financeArticles = financeData.articles.map(a => ({
+                            category: 'Finanza Internazionale',
+                            title: a.title,
+                            summary: a.description,
+                            source: a.source.name,
+                            url: a.url,
+                            publishedAt: a.publishedAt
+                        }));
+                        
+                        const allArticles = [...cryptoArticles, ...financeArticles].sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
+                        
+                        await setDoc(cacheRef, { news: JSON.stringify(allArticles), timestamp: new Date() });
+                        state.infoModal = { isOpen: true, title: t('latestFinancialNews'), content: formatNews(allArticles, false), isLoading: false };
+                    }
                 } catch (error) {
-                    console.error("Errore nel caricare le notizie AI:", error);
+                    console.error("Errore nel caricare le notizie da GNews:", error);
                     const errorMessage = `<p class="text-center text-red-400">${t('errorLoadingNews')}<br>Dettaglio errore: ${error.message}</p>`;
                     state.infoModal = { isOpen: true, title: t('error'), content: errorMessage, isLoading: false };
                 } finally {
@@ -1736,8 +1846,8 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
             }
 
             async function handleFetchEconomicCalendar() {
-                if (!state.currentUserId || !state.apiKey) {
-                    console.error("Utente non identificato o API key mancante.");
+                if (!state.user || !state.apiKey) {
+                    console.error("Utente non autenticato o API key di Gemini mancante.");
                     return;
                 }
                 
@@ -1748,7 +1858,7 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
                 const monthNames = translations[state.currentLanguage].monthNames;
                 const monthName = monthNames[currentMonthIndex];
                 const cacheKey = `economicCalendar_${currentYear}_${currentMonthIndex}`;
-                const cacheRef = doc(db, "users", state.currentUserId, "cache", cacheKey);
+                const cacheRef = doc(db, "users", state.user.uid, "cache", cacheKey);
 
                 try {
                     const docSnap = await getDoc(cacheRef);
@@ -1821,43 +1931,41 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
             }
 
             // --- AI ANALYSIS FUNCTION ---
-            function formatAiAnalysis(text) {
-                 if (!text) return '<p class="text-gray-400">Nessuna analisi disponibile.</p>';
-                let html = '';
-                const sections = text.split(/\*\*(.*?)\*\*/g).filter(s => s.trim() !== '');
+            function formatAiAnalysis(analysis, fromCache = false) {
+                if (!analysis) return '<p class="text-gray-400">Nessuna analisi disponibile.</p>';
+                
+                const sections = [
+                    { title: 'Analisi Generale', key: 'generalAnalysis', icon: ' M12 20V10M18 20V4M6 20V16' },
+                    { title: 'Punti di Forza', key: 'strengths', icon: 'M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z' },
+                    { title: 'Aree di Miglioramento', key: 'weaknesses', icon: 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z' },
+                    { title: 'Consigli AI', key: 'recommendations', icon: 'M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z' }
+                ];
 
-                for (let i = 0; i < sections.length; i += 2) {
-                    const title = sections[i].replace(/:$/, '').trim();
-                    const content = sections[i + 1] || '';
-                    
-                    html += `<div class="mb-4">
-                                <h3 class="text-lg font-semibold text-yellow-400 mb-2">${title}</h3>`;
-                    
-                    const items = content.trim().split('\n- ').filter(item => item.trim() !== '');
-                    if (items.length > 1 || content.trim().startsWith('- ')) {
-                         html += '<ul class="space-y-2 list-disc list-inside text-gray-300">';
-                         items.forEach(item => {
-                             html += `<li>${item.trim()}</li>`;
-                         });
-                         html += '</ul>';
-                    } else {
-                        html += `<p class="text-gray-300">${content.trim()}</p>`;
+                let html = '';
+                sections.forEach(section => {
+                    if (analysis[section.key]) {
+                        html += `<div class="mb-4 bg-gray-800/50 p-4 rounded-lg">
+                                    <h3 class="text-lg font-semibold text-yellow-400 mb-2 flex items-center gap-2">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="${section.icon}" /></svg>
+                                        ${section.title} ${fromCache && section.title === 'Analisi Generale' ? `<span class="text-sm font-normal text-gray-400">${t('fromCache')}</span>` : ''}
+                                    </h3>
+                                    <p class="text-gray-300 whitespace-pre-line">${analysis[section.key]}</p>
+                                 </div>`;
                     }
-                    html += `</div>`;
-                }
+                });
                 return html;
             }
 
             async function handleFetchAiAnalysis() {
-                if (!state.apiKey) {
-                    state.modal = { isOpen: true, mode: 'api_key', data: null };
-                    render();
+                if (!state.user || !state.apiKey) {
+                    console.error("Utente non autenticato o API key di Gemini mancante.");
                     return;
                 }
                 
                 const { currentYear, currentMonthIndex, trades } = state;
                 const monthNames = translations[state.currentLanguage].monthNames;
                 const monthKey = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`;
+                
                 const tradesInMonth = trades
                     .filter(t => t.status === 'closed' && t.saleDate && t.saleDate.startsWith(monthKey))
                     .map(t => {
@@ -1876,36 +1984,57 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
 
                 state.infoModal = { isOpen: true, title: `${t('aiAnalysis')} - ${monthNames[currentMonthIndex]}`, content: '', isLoading: true };
                 render();
-
-                const prompt = `Agisci come un analista di trading professionista. Analizza la seguente lista di operazioni di trading in criptovalute chiuse questo mese: ${JSON.stringify(tradesInMonth)}. Fornisci un riassunto qualitativo della performance. Struttura la risposta in sezioni con titoli in grassetto (es. **Analisi Generale**). Le sezioni devono essere:
-- **Analisi Generale**: Un breve riassunto della performance del mese.
-- **Punti di Forza**: Identifica le operazioni migliori o pattern positivi.
-- **Aree di Miglioramento**: Identifica le operazioni peggiori o errori comuni.
-- **Consigli AI ✨**: Offri 2-3 consigli pratici e personalizzati per migliorare.`;
-
-                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${state.apiKey}`;
-                const payload = { contents: [{ parts: [{ text: prompt }] }] };
+                
+                const cacheRef = doc(db, "users", state.user.uid, "cache", `aiAnalysis_${monthKey}`);
 
                 try {
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
+                    const docSnap = await getDoc(cacheRef);
+                    const now = new Date();
+                    const sixHours = 6 * 60 * 60 * 1000;
 
-                    if (!response.ok) {
-                        throw new Error(`La richiesta API è fallita con stato ${response.status}`);
-                    }
-
-                    const result = await response.json();
-                    const analysisText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-                    
-                    if (analysisText) {
-                        state.infoModal = { isOpen: true, title: `${t('aiAnalysis')} - ${monthNames[currentMonthIndex]}`, content: formatAiAnalysis(analysisText), isLoading: false };
+                    if (docSnap.exists() && (now - docSnap.data().timestamp.toDate()) < sixHours) {
+                        const analysis = JSON.parse(docSnap.data().analysis);
+                        state.infoModal = { isOpen: true, title: `${t('aiAnalysis')} - ${monthNames[currentMonthIndex]}`, content: formatAiAnalysis(analysis, true), isLoading: false };
                     } else {
-                        throw new Error("Nessun contenuto ricevuto dall'API.");
-                    }
+                        const prompt = `Agisci come un analista di trading professionista. Analizza la seguente lista di operazioni di trading in criptovalute chiuse questo mese: ${JSON.stringify(tradesInMonth)}. Fornisci un'analisi concisa e diretta. Restituisci la risposta SOLO in formato JSON con le seguenti chiavi: "generalAnalysis", "strengths", "weaknesses", "recommendations". Ogni valore deve essere una stringa di testo in italiano.`;
 
+                        const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${state.apiKey}`;
+                        const payload = { 
+                            contents: [{ parts: [{ text: prompt }] }],
+                            generationConfig: {
+                                responseMimeType: "application/json",
+                                responseSchema: {
+                                    type: "OBJECT",
+                                    properties: {
+                                        generalAnalysis: { type: "STRING" },
+                                        strengths: { type: "STRING" },
+                                        weaknesses: { type: "STRING" },
+                                        recommendations: { type: "STRING" }
+                                    },
+                                    required: ["generalAnalysis", "strengths", "weaknesses", "recommendations"]
+                                }
+                            }
+                        };
+
+                        const response = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        if (!response.ok) throw new Error(`La richiesta API è fallita con stato ${response.status}`);
+                        
+                        const result = await response.json();
+                        const analysisText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                        
+                        if (analysisText) {
+                            const analysis = JSON.parse(analysisText);
+                            await setDoc(cacheRef, { analysis: JSON.stringify(analysis), timestamp: new Date() });
+                            state.infoModal = { isOpen: true, title: `${t('aiAnalysis')} - ${monthNames[currentMonthIndex]}`, content: formatAiAnalysis(analysis, false), isLoading: false };
+                        } else {
+                            throw new Error("Nessun contenuto ricevuto dall'API.");
+                        }
+                    }
                 } catch (error) {
                     console.error("Errore nel caricare l'analisi AI:", error);
                     const errorMessage = `<p class="text-center text-red-400">${t('errorLoadingNews')}<br>Dettaglio errore: ${error.message}</p>`;
@@ -2024,22 +2153,6 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
                 }
             }
 
-            // --- CONTACT FUNCTION ---
-            function handleSendEmail() {
-                const subjectInput = document.getElementById('contact-subject');
-                const messageInput = document.getElementById('contact-message');
-
-                if (!subjectInput || !messageInput) return;
-
-                const subject = subjectInput.value;
-                const message = messageInput.value;
-                
-                const mailtoUrl = `mailto:fabius.amendola@gmail.com?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
-                
-                window.open(mailtoUrl, '_blank');
-            }
-
-
             // --- API & INITIALIZATION ---
             async function fetchFiatRates() {
                 if (!navigator.onLine) return;
@@ -2079,11 +2192,6 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
                 splashScreen.style.opacity = '0';
                 splashScreen.style.pointerEvents = 'none';
                 appContainer.classList.add('visible');
-
-                Promise.all([fetchTickerData(), fetchFiatRates()]).then(() => {
-                    render();
-                });
-                setInterval(fetchTickerData, 90000);
             }
             
             function showLoginScreen() {
@@ -2093,15 +2201,52 @@ La data e l'ora attuali sono: ${new Date().toLocaleString('it-IT')}. **NON resti
                 splashScreen.style.pointerEvents = 'auto';
                 appContainer.classList.remove('visible');
                 render();
+                loadCredentials();
+            }
+
+            function loadCredentials() {
+                const credentials = localStorage.getItem('tradefolioCredentials');
+                if (credentials) {
+                    try {
+                        const { email, password } = JSON.parse(credentials);
+                        const emailInput = document.getElementById('auth-email');
+                        const passwordInput = document.getElementById('auth-password');
+                        const stayLoggedInCheckbox = document.getElementById('stay-logged-in');
+                        if (emailInput && passwordInput && stayLoggedInCheckbox) {
+                            emailInput.value = email;
+                            passwordInput.value = atob(password); // Decode password
+                            stayLoggedInCheckbox.checked = true;
+                        }
+                    } catch (e) {
+                        console.error("Failed to parse saved credentials", e);
+                        localStorage.removeItem('tradefolioCredentials');
+                    }
+                }
             }
 
             // --- AUTHENTICATION & APP START ---
-            signInAnonymously(auth).catch((error) => {
-                console.error("Accesso anonimo fallito:", error);
-                document.getElementById('auth-container').innerHTML = `<p class="text-red-400 text-center">Connessione fallita. Riprova più tardi.</p>`;
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    state.user = user;
+                    setupTradesListener(user.uid);
+                    setupNotesListener(user.uid);
+                    loadSettings();
+                    
+                    Promise.all([fetchTickerData(), fetchFiatRates()]).then(() => {
+                        render(); 
+                        showApp();
+                    });
+                    
+                    setInterval(fetchTickerData, 90000);
+                } else {
+                    state.user = null;
+                    state.trades = [];
+                    state.notes = [];
+                    if (state.tradesListener) state.tradesListener();
+                    if (state.notesListener) state.notesListener();
+                    showLoginScreen();
+                }
             });
-
-            showLoginScreen();
         });
     </script>
 </body>
