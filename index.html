@@ -13,12 +13,7 @@
     <link rel="apple-touch-icon" href="https://placehold.co/192x192/ffffff/000000?text=TF">
 
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- Librerie per il Grafico a Candele -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/luxon@2.3.1/build/global/luxon.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-luxon@1.1.0/dist/chartjs-adapter-luxon.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.1.0/dist/chartjs-chart-financial.min.js"></script>
-    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@400;700&display=swap" rel="stylesheet">
@@ -970,122 +965,63 @@
                 const chartCanvas = document.getElementById('profitChart');
                 if (!chartCanvas) return;
                 const ctx = chartCanvas.getContext('2d');
-
+                
                 const { currentYear, currentMonthIndex, trades } = state;
                 const currencySymbol = getCurrencySymbol();
-
-                // 1. Calcola il profitto cumulativo fino all'inizio del mese corrente
-                let startingProfit = trades
-                    .filter(t => {
-                        if (t.status !== 'closed' || !t.saleDate) return false;
-                        const saleDate = new Date(t.saleDate);
-                        const monthStartDate = new Date(currentYear, currentMonthIndex, 1);
-                        return saleDate < monthStartDate;
-                    })
-                    .reduce((acc, t) => acc + (calculateTradeProfits(t).netProfit || 0), 0);
-                
-                let cumulativeProfit = startingProfit;
-
                 const daysInMonth = getDaysInMonth(currentYear, currentMonthIndex);
-                const chartData = [];
+                const closedTrades = trades.filter(t => t.status === 'closed');
+                const dailySummaries = new Map();
+                closedTrades.forEach(trade => {
+                    const saleDate = trade.saleDate;
+                    if (!saleDate || !saleDate.startsWith(`${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`)) return;
+                    if (!dailySummaries.has(saleDate)) { dailySummaries.set(saleDate, { netProfit: 0 }); }
+                    dailySummaries.get(saleDate).netProfit += (calculateTradeProfits(trade).netProfit || 0);
+                });
+                const chartData = Array.from({ length: daysInMonth }, (_, day) => {
+                    const dateString = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}-${String(day + 1).padStart(2, '0')}`;
+                    const profitUSD = dailySummaries.get(dateString)?.netProfit || 0;
+                    return convertToCurrentCurrency(profitUSD);
+                });
+                const chartLabels = Array.from({ length: daysInMonth }, (_, day) => day + 1);
 
-                // 2. Itera attraverso ogni giorno del mese per costruire i dati OHLC (Open, High, Low, Close)
-                for (let day = 1; day <= daysInMonth; day++) {
-                    const dateString = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-                    
-                    const tradesOnThisDay = trades
-                        .filter(t => t.status === 'closed' && t.saleDate === dateString)
-                        .map(calculateTradeProfits);
+                const gradient = ctx.createLinearGradient(0, 0, 0, chartCanvas.offsetHeight);
+                gradient.addColorStop(0, 'rgba(251, 191, 36, 1)'); // Giallo
+                gradient.addColorStop(1, 'rgba(239, 68, 68, 1)');   // Rosso
 
-                    const open = cumulativeProfit;
-                    let high = open;
-                    let low = open;
-                    let tempCumulative = open;
-
-                    // Calcola H, L, C basandosi sui trade del giorno
-                    tradesOnThisDay.forEach(trade => {
-                        tempCumulative += trade.netProfit;
-                        high = Math.max(high, tempCumulative);
-                        low = Math.min(low, tempCumulative);
-                    });
-                    
-                    const close = tempCumulative;
-                    
-                    chartData.push({
-                        x: luxon.DateTime.fromISO(dateString).toMillis(),
-                        o: convertToCurrentCurrency(open),
-                        h: convertToCurrentCurrency(high),
-                        l: convertToCurrentCurrency(low),
-                        c: convertToCurrentCurrency(close)
-                    });
-
-                    cumulativeProfit = close; // Aggiorna il profitto cumulativo per il giorno successivo
-                }
-
-                if (profitChart) {
-                    profitChart.destroy();
-                }
-
-                // 3. Crea il grafico a candele
+                if (profitChart) { profitChart.destroy(); }
+                
                 profitChart = new Chart(ctx, {
-                    type: 'candlestick',
-                    data: {
-                        datasets: [{
-                            label: `${t('netProfit')} (${currencySymbol})`,
-                            data: chartData,
-                            borderColor: function(context) {
-                                const o = context.raw.o;
-                                const c = context.raw.c;
-                                return c >= o ? '#22c55e' : '#ef4444';
-                            },
-                            backgroundColor: function(context) {
-                                const o = context.raw.o;
-                                const c = context.raw.c;
-                                return c >= o ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)';
-                            }
-                        }]
+                    type: 'line',
+                    data: { 
+                        labels: chartLabels, 
+                        datasets: [{ 
+                            label: t('netProfit'), 
+                            data: chartData, 
+                            borderColor: gradient,
+                            backgroundColor: 'rgba(251, 191, 36, 0.1)', 
+                            fill: true, 
+                            tension: 0.4, 
+                            borderWidth: 2, 
+                            pointRadius: 2, 
+                            pointBackgroundColor: '#FBBF24' 
+                        }] 
                     },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                backgroundColor: '#1f2937',
-                                titleColor: '#F3F4F6',
-                                bodyColor: '#D1D5DB',
-                                callbacks: {
-                                    label: function(context) {
-                                        const o = context.raw.o.toFixed(2);
-                                        const h = context.raw.h.toFixed(2);
-                                        const l = context.raw.l.toFixed(2);
-                                        const c = context.raw.c.toFixed(2);
-                                        return `A: ${o} | M: ${h} | m: ${l} | C: ${c}`;
-                                    }
-                                }
-                            }
-                        },
-                        scales: {
-                            x: {
-                                type: 'time',
-                                time: {
-                                    unit: 'day',
-                                    tooltipFormat: 'dd LLL yyyy'
-                                },
-                                grid: { display: false },
-                                ticks: { color: '#9CA3AF', font: { size: 10 } }
-                            },
-                            y: {
-                                grid: { color: '#4b5563' },
-                                ticks: {
-                                    color: '#9CA3AF',
-                                    font: { size: 10 },
-                                    callback: function(value) {
-                                        return value.toFixed(0) + ' ' + currencySymbol;
-                                    }
-                                }
-                            }
-                        }
+                    options: { 
+                        responsive: true, 
+                        maintainAspectRatio: false, 
+                        scales: { 
+                            y: { ticks: { color: '#9CA3AF', font: { size: 10 } }, grid: { color: '#4b5563' } }, 
+                            x: { ticks: { color: '#9CA3AF', font: { size: 10 } }, grid: { display: false } } 
+                        }, 
+                        plugins: { 
+                            legend: { display: false }, 
+                            tooltip: { 
+                                backgroundColor: '#1f2937', 
+                                titleColor: '#F3F4F6', 
+                                bodyColor: '#D1D5DB', 
+                                callbacks: { label: (c) => `${t('day')} ${c.label}: ${c.raw.toFixed(2)} ${currencySymbol}` } 
+                            } 
+                        } 
                     }
                 });
             }
