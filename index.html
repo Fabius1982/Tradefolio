@@ -795,6 +795,14 @@
                     document.getElementById('auth-container').innerHTML = renderAuthForm();
                 }
                 document.getElementById('modals-container').innerHTML = renderAllModals();
+
+                // BUG FIX: Centralizza la gestione della visibilità del menu
+                const menu = document.getElementById('side-menu');
+                const overlay = document.getElementById('menu-overlay');
+                if (menu && overlay) {
+                    menu.classList.toggle('open', state.isMenuOpen);
+                    overlay.classList.toggle('open', state.isMenuOpen);
+                }
             }
 
             function renderAuthForm() {
@@ -1502,14 +1510,10 @@
                 }
             });
 
+            // BUG FIX: La funzione toggle ora aggiorna solo lo stato e chiama render
             function toggleMenu(forceState) {
                 state.isMenuOpen = typeof forceState === 'boolean' ? forceState : !state.isMenuOpen;
-                const menu = document.getElementById('side-menu');
-                const overlay = document.getElementById('menu-overlay');
-                if (menu && overlay) {
-                    menu.classList.toggle('open', state.isMenuOpen);
-                    overlay.classList.toggle('open', state.isMenuOpen);
-                }
+                render();
             }
 
             function handleGenerateMonthlyReport() {
@@ -2164,6 +2168,7 @@ Peggior Trade
             onAuthStateChanged(auth, (user) => {
                 if (user) {
                     state.user = user;
+                    state.isMenuOpen = false; // FIX: Reset menu state on login
                     setupTradesListener(user.uid);
                     setupNotesListener(user.uid);
                     loadSettings();
@@ -2176,6 +2181,7 @@ Peggior Trade
                     setInterval(fetchTickerData, 90000);
                 } else {
                     state.user = null;
+                    state.isMenuOpen = false; // FIX: Reset menu state on logout
                     state.trades = [];
                     state.notes = [];
                     if (state.tradesListener) state.tradesListener();
