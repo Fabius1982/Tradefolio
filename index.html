@@ -1541,14 +1541,6 @@
                         state.auth = { mode: 'login', error: null, isLoading: false };
                         signOut(auth);
                         break;
-                    // MODIFICA: Gestisce l'apertura dei link delle notizie in una nuova scheda
-                    case 'open-external-link':
-                        e.preventDefault();
-                        const url = target.href;
-                        if (url) {
-                            window.open(url, '_blank', 'noopener,noreferrer');
-                        }
-                        break;
                 }
             });
 
@@ -2040,7 +2032,7 @@
                         html += `
                             <div class="p-4 bg-gray-800 rounded-lg border border-gray-700 hover:border-yellow-500 transition-colors">
                                 <h4 class="font-semibold text-base text-white mb-2">
-                                    <a href="${item.url}" data-action="open-external-link" class="hover:underline">${item.title}</a>
+                                    <a href="${item.url}" target="_blank" rel="noopener noreferrer" class="hover:underline">${item.title}</a>
                                 </h4>
                                 <p class="text-gray-400 text-sm mb-3">${item.summary}</p>
                                 <div class="text-xs text-gray-500 flex justify-between items-center">
