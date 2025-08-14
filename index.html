@@ -1226,7 +1226,22 @@
                                </div>`;
                 } else if (mode === 'close') {
                     const openPositions = state.trades.filter(t => t.status === 'open');
-                    content = `<h2 class="text-lg font-bold mb-3 text-white">${t('closePosition')}</h2><div class="space-y-3"><select id="close-trade-select" required class="modal-input"><option value="">${t('selectPosition')}</option>${openPositions.map(t => `<option value="${t.id}">${t.cryptoSymbol.toUpperCase()} del ${formatDate(t.purchaseDate)}</option>`).join('')}</select><input id="close-date" type="date" value="${today}" required class="modal-input" /><input id="close-price" type="number" step="any" placeholder="${t('salePrice')} (${currencySymbol})" required class="modal-input" /></div><div class="flex justify-end mt-4"><button type="submit" class="modal-btn bg-red-600 hover:bg-red-700 text-white">${t('closePositionBtn')}</button></div>`;
+                    const openPositionsOptions = openPositions.map(t => {
+                        const displayPrice = convertToCurrentCurrency(t.purchasePrice);
+                        return `<option value="${t.id}">${t.cryptoSymbol.toUpperCase()} (${t.quantity}) del ${formatDate(t.purchaseDate)} @ ${displayPrice.toFixed(2)}${currencySymbol}</option>`;
+                    }).join('');
+                    content = `<h2 class="text-lg font-bold mb-3 text-white">${t('closePosition')}</h2>
+                               <div class="space-y-3">
+                                   <select id="close-trade-select" required class="modal-input">
+                                       <option value="">${t('selectPosition')}</option>
+                                       ${openPositionsOptions}
+                                   </select>
+                                   <input id="close-date" type="date" value="${today}" required class="modal-input" />
+                                   <input id="close-price" type="number" step="any" placeholder="${t('salePrice')} (${currencySymbol})" required class="modal-input" />
+                               </div>
+                               <div class="flex justify-end mt-4">
+                                   <button type="submit" class="modal-btn bg-red-600 hover:bg-red-700 text-white">${t('closePositionBtn')}</button>
+                               </div>`;
                 } else if (mode === 'edit_open' || mode === 'edit_closed') {
                     const trade = state.trades.find(t => t.id === data.tradeId);
                     const displayPurchasePrice = convertToCurrentCurrency(trade.purchasePrice);
