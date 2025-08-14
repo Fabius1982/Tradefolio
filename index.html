@@ -436,6 +436,7 @@
                 confirmationModal: { isOpen: false, message: '', onConfirm: null },
                 infoModal: { isOpen: false, title: '', content: '', isLoading: false },
                 converterModal: { isOpen: false },
+                iframeModal: { isOpen: false, url: '', title: '' },
                 isMenuOpen: false,
                 auth: { mode: 'login', error: null, isLoading: false },
                 currentCurrency: 'usd',
@@ -1200,6 +1201,7 @@
                 if (state.confirmationModal.isOpen) html += renderConfirmationModal();
                 if (state.infoModal.isOpen) html += renderInfoModal();
                 if (state.converterModal.isOpen) html += renderConverterModal();
+                if (state.iframeModal.isOpen) html += renderIframeModal();
                 return html;
             }
 
@@ -1293,6 +1295,28 @@
                                 <div class="modal-body">${modalBody}</div>
                             </div>
                         </div>`;
+            }
+
+            function renderIframeModal() {
+                const { url, title } = state.iframeModal;
+                return `
+                    <div class="modal-overlay">
+                        <div class="modal-content max-w-full h-full md:h-5/6 md:max-w-3xl flex flex-col">
+                            <div class="flex justify-between items-center mb-2 pb-2 border-b border-gray-700 flex-shrink-0">
+                                <h2 class="text-md font-bold text-white truncate pr-4">${title}</h2>
+                                <button class="modal-btn bg-red-600 hover:bg-red-700 text-sm !p-2" data-action="close-iframe-modal">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                        <path fill-rule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clip-rule="evenodd" />
+                                    </svg>
+                                    <span class="hidden sm:inline ml-1">${t('close')}</span>
+                                </button>
+                            </div>
+                            <div class="flex-grow overflow-hidden bg-white">
+                                <iframe src="${url}" class="w-full h-full border-0" sandbox="allow-scripts allow-same-origin"></iframe>
+                            </div>
+                        </div>
+                    </div>
+                `;
             }
 
             function renderConverterModal() {
@@ -1433,6 +1457,7 @@
                         state.noteModal.isOpen = false;
                         state.confirmationModal.isOpen = false;
                         state.converterModal.isOpen = false;
+                        state.iframeModal.isOpen = false;
                         if (!state.infoModal.isLoading) state.infoModal.isOpen = false;
                         render();
                     }
@@ -1498,11 +1523,20 @@
                     case 'close-info-modal':
                     case 'close-converter-modal':
                     case 'close-note-modal':
+                    case 'close-iframe-modal':
                         state.modal.isOpen = false;
                         state.noteModal.isOpen = false;
                         state.confirmationModal.isOpen = false;
                         state.converterModal.isOpen = false;
+                        state.iframeModal.isOpen = false;
                         if (!state.infoModal.isLoading) state.infoModal.isOpen = false;
+                        render();
+                        break;
+                    case 'open-news-iframe':
+                        e.preventDefault();
+                        const url = target.dataset.url;
+                        const title = target.dataset.title;
+                        state.iframeModal = { isOpen: true, url: url, title: title };
                         render();
                         break;
                     case 'open-converter':
