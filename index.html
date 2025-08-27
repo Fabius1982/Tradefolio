@@ -920,7 +920,7 @@
                                 <div>
                                     <div class="font-bold text-base text-white">${trade.cryptoSymbol.toUpperCase()} ${trade.leverage > 1 ? `<span class="text-xs font-normal text-yellow-400">${trade.leverage}x</span>` : ''}</div>
                                     <div class="text-sm mt-1">
-                                        ${displayProfit >= 0 ? '📈' : '📉'} <span class="${displayProfit >= 0 ? 'profit' : 'loss'}">${displayProfit.toFixed(2)} ${currencySymbol}</span>
+                                        ${displayProfit >= 0 ? '📈' : '�'} <span class="${displayProfit >= 0 ? 'profit' : 'loss'}">${displayProfit.toFixed(2)} ${currencySymbol}</span>
                                     </div>
                                 </div>
                                 <div class="text-xs text-gray-400">(${p.percentageProfit.toFixed(1)}%)</div>
@@ -1166,7 +1166,7 @@
                 return summaryAndChartHTML + activityHTML;
             }
 
-            // --- GRAFICO RIPRISTINATO A LINEE ---
+            // --- MODIFICA GRAFICO: DA LINEE A BARRE ---
             function renderChart() {
                 const chartCanvas = document.getElementById('profitChart');
                 if (!chartCanvas) return;
@@ -1177,47 +1177,54 @@
                 const daysInMonth = getDaysInMonth(currentYear, currentMonthIndex);
                 const closedTrades = trades.filter(t => t.status === 'closed');
                 const dailySummaries = new Map();
+
                 closedTrades.forEach(trade => {
                     const saleDate = trade.saleDate;
                     if (!saleDate || !saleDate.startsWith(`${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`)) return;
                     if (!dailySummaries.has(saleDate)) { dailySummaries.set(saleDate, { netProfit: 0 }); }
                     dailySummaries.get(saleDate).netProfit += (calculateTradeProfits(trade).netProfit || 0);
                 });
+
                 const chartData = Array.from({ length: daysInMonth }, (_, day) => {
                     const dateString = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}-${String(day + 1).padStart(2, '0')}`;
                     const profitUSD = dailySummaries.get(dateString)?.netProfit || 0;
                     return convertToCurrentCurrency(profitUSD);
                 });
+                
                 const chartLabels = Array.from({ length: daysInMonth }, (_, day) => day + 1);
 
-                const gradient = ctx.createLinearGradient(0, 0, 0, chartCanvas.offsetHeight);
-                gradient.addColorStop(0, 'rgba(251, 191, 36, 1)'); // Giallo
-                gradient.addColorStop(1, 'rgba(239, 68, 68, 1)');   // Rosso
+                // Colori dinamici per le barre
+                const backgroundColors = chartData.map(profit => profit >= 0 ? 'rgba(34, 197, 94, 0.7)' : 'rgba(239, 68, 68, 0.7)');
+                const hoverBackgroundColors = chartData.map(profit => profit >= 0 ? 'rgba(34, 197, 94, 1)' : 'rgba(239, 68, 68, 1)');
 
                 if (profitChart) { profitChart.destroy(); }
                 
                 profitChart = new Chart(ctx, {
-                    type: 'line',
+                    type: 'bar', // Tipo di grafico cambiato a 'bar'
                     data: { 
                         labels: chartLabels, 
                         datasets: [{ 
                             label: t('netProfit'), 
                             data: chartData, 
-                            borderColor: gradient,
-                            backgroundColor: 'rgba(251, 191, 36, 0.1)', 
-                            fill: true, 
-                            tension: 0.4, 
-                            borderWidth: 2, 
-                            pointRadius: 2, 
-                            pointBackgroundColor: '#FBBF24' 
+                            backgroundColor: backgroundColors,
+                            hoverBackgroundColor: hoverBackgroundColors,
+                            borderColor: backgroundColors, // Aggiunto per coerenza
+                            borderWidth: 1,
+                            borderRadius: 4, // Barre arrotondate
                         }] 
                     },
                     options: { 
                         responsive: true, 
                         maintainAspectRatio: false, 
                         scales: { 
-                            y: { ticks: { color: '#9CA3AF', font: { size: 10 } }, grid: { color: '#4b5563' } }, 
-                            x: { ticks: { color: '#9CA3AF', font: { size: 10 } }, grid: { display: false } } 
+                            y: { 
+                                ticks: { color: '#9CA3AF', font: { size: 10 } }, 
+                                grid: { color: '#4b5563' } 
+                            }, 
+                            x: { 
+                                ticks: { color: '#9CA3AF', font: { size: 10 } }, 
+                                grid: { display: false } 
+                            } 
                         }, 
                         plugins: { 
                             legend: { display: false }, 
@@ -1225,7 +1232,9 @@
                                 backgroundColor: '#1f2937', 
                                 titleColor: '#F3F4F6', 
                                 bodyColor: '#D1D5DB', 
-                                callbacks: { label: (c) => `${t('day')} ${c.label}: ${c.raw.toFixed(2)} ${currencySymbol}` } 
+                                callbacks: { 
+                                    label: (c) => `${t('day')} ${c.label}: ${c.raw.toFixed(2)} ${currencySymbol}` 
+                                } 
                             } 
                         } 
                     }
@@ -1900,7 +1909,7 @@
                     const borderColor = isBest ? 'border-green-500/30' : 'border-red-500/30';
                     const textColor = isBest ? 'text-green-400' : 'text-red-400';
                     const title = isBest ? 'Miglior Trade' : 'Peggior Trade';
-                    const icon = isBest ? '🏆' : '�';
+                    const icon = isBest ? '🏆' : '📉';
 
                     return `
                         <div class="${bgColor} p-4 rounded-lg border ${borderColor}">
