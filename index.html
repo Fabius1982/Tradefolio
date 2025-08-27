@@ -160,6 +160,36 @@
             cursor: not-allowed; 
             opacity: 0.7; 
         }
+        
+        /* Stili per lo slider della leva */
+        .custom-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 8px;
+            background: #4b5563;
+            border-radius: 5px;
+            outline: none;
+            transition: opacity .2s;
+        }
+        .custom-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #FBBF24;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #374151;
+        }
+        .custom-slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #FBBF24;
+            cursor: pointer;
+            border-radius: 50%;
+            border: 2px solid #374151;
+        }
 
         /* Stili per il ticker dei prezzi */
         .ticker-wrap {
@@ -497,6 +527,7 @@
                     selectCrypto: 'Seleziona una criptovaluta',
                     purchasePrice: 'Prezzo Acquisto',
                     quantity: 'Quantità',
+                    leverage: 'Usa Leva',
                     savePosition: 'Salva Posizione',
                     selectPosition: 'Seleziona posizione',
                     salePrice: 'Prezzo Vendita',
@@ -570,6 +601,7 @@
                     selectCrypto: 'Select a cryptocurrency',
                     purchasePrice: 'Purchase Price',
                     quantity: 'Quantity',
+                    leverage: 'Use Leverage',
                     savePosition: 'Save Position',
                     selectPosition: 'Select position',
                     salePrice: 'Sale Price',
@@ -643,6 +675,7 @@
                     selectCrypto: 'Kryptowährung auswählen',
                     purchasePrice: 'Kaufpreis',
                     quantity: 'Menge',
+                    leverage: 'Hebel anwenden',
                     savePosition: 'Position speichern',
                     selectPosition: 'Position auswählen',
                     salePrice: 'Verkaufspreis',
@@ -716,6 +749,7 @@
                     selectCrypto: 'Sélectionner une crypto-monnaie',
                     purchasePrice: "Prix d'achat",
                     quantity: 'Quantité',
+                    leverage: 'Utiliser le Levier',
                     savePosition: 'Enregistrer la position',
                     selectPosition: 'Sélectionner la position',
                     salePrice: 'Prix de vente',
@@ -857,8 +891,9 @@
 
             const calculateTradeProfits = (trade) => {
                 if (trade.status !== 'closed' || !trade.salePrice) return { ...trade, netProfit: 0, percentageProfit: 0 };
-                const netProfit = (trade.salePrice - trade.purchasePrice) * trade.quantity;
-                const costBasis = trade.purchasePrice * trade.quantity;
+                const leverage = trade.leverage || 1; // Default a 1 se non definita
+                const netProfit = (trade.salePrice - trade.purchasePrice) * trade.quantity * leverage;
+                const costBasis = trade.purchasePrice * trade.quantity; // La base di costo non è levereggiata per il calcolo del ROI
                 const percentageProfit = costBasis !== 0 ? (netProfit / costBasis) * 100 : 0;
                 return { ...trade, netProfit, percentageProfit };
             };
@@ -880,7 +915,7 @@
                         return `<div class="trade-item bg-gray-800 flex flex-col p-2 mt-2">
                             <div class="flex justify-between items-start">
                                 <div>
-                                    <div class="font-bold text-base text-white">${trade.cryptoSymbol.toUpperCase()}</div>
+                                    <div class="font-bold text-base text-white">${trade.cryptoSymbol.toUpperCase()} ${trade.leverage > 1 ? `<span class="text-xs font-normal text-yellow-400">${trade.leverage}x</span>` : ''}</div>
                                     <div class="text-sm mt-1">
                                         ${displayProfit >= 0 ? '📈' : '📉'} <span class="${displayProfit >= 0 ? 'profit' : 'loss'}">${displayProfit.toFixed(2)} ${currencySymbol}</span>
                                     </div>
@@ -897,7 +932,7 @@
                         return `<div class="trade-item bg-gray-700/50 flex flex-col p-2 mt-2">
                             <div class="flex justify-between items-start">
                                 <div>
-                                    <div class="font-bold text-base text-white">${trade.cryptoSymbol.toUpperCase()}</div>
+                                    <div class="font-bold text-base text-white">${trade.cryptoSymbol.toUpperCase()} ${trade.leverage > 1 ? `<span class="text-xs font-normal text-yellow-400">${trade.leverage}x</span>` : ''}</div>
                                     <div class="text-sm mt-1 text-gray-300">
                                         <span>${trade.quantity} @ ${displayPrice.toFixed(2)}${currencySymbol}</span>
                                     </div>
@@ -991,7 +1026,7 @@
                         ${isLogin ? t('noAccount') : t('haveAccount')}
                         <button data-action="toggle-auth-form" class="font-semibold text-yellow-400 hover:underline">${isLogin ? t('register') : t('login')}</button>
                     </p>
-                    <p class="text-xs text-gray-500 mt-8 text-center whitespace-nowrap">Copyright © 2025 Fabio Amendola. Tutti i diritti riservati. ver. 6.01</p>
+                    <p class="text-xs text-gray-500 mt-8 text-center whitespace-nowrap">Copyright © 2025 Fabio Amendola. Tutti i diritti riservati. ver. 6.05</p>
                 `;
             }
 
@@ -1222,6 +1257,15 @@
                                    </select>
                                    <input id="open-price" type="number" step="any" placeholder="${t('purchasePrice')} (${currencySymbol})" required class="modal-input" />
                                    <input id="open-quantity" type="number" step="any" placeholder="${t('quantity')}" required class="modal-input" />
+                                   <div class="flex items-center gap-2 pt-2">
+                                        <input type="checkbox" id="open-leverage-toggle" class="h-4 w-4 rounded border-gray-500 bg-gray-700 text-yellow-500 focus:ring-yellow-400">
+                                        <label for="open-leverage-toggle" class="text-sm font-medium text-gray-300">${t('leverage')}</label>
+                                   </div>
+                                   <div id="open-leverage-container" class="flex items-center gap-4 opacity-50 transition-opacity">
+                                        <input id="open-leverage-slider" type="range" min="1" max="100" value="1" class="custom-slider flex-grow" disabled>
+                                        <span id="open-leverage-display" class="font-bold text-lg text-yellow-400 w-16 text-center">1x</span>
+                                   </div>
+                                   <input type="hidden" id="open-leverage" value="1">
                                </div>
                                <div class="flex justify-end mt-4">
                                    <button type="submit" class="modal-btn bg-yellow-500 hover:bg-yellow-600 text-black">${t('savePosition')}</button>
@@ -1248,7 +1292,29 @@
                     const trade = state.trades.find(t => t.id === data.tradeId);
                     const displayPurchasePrice = convertToCurrentCurrency(trade.purchasePrice);
                     const displaySalePrice = trade.salePrice ? convertToCurrentCurrency(trade.salePrice) : '';
-                    content = `<h2 class="text-lg font-bold mb-3 text-white">${t('editTransaction')}</h2><div class="space-y-3 text-sm"><label class="block">${t('cryptoSymbol')} <input id="edit-crypto-symbol" type="text" value="${trade.cryptoSymbol}" required class="modal-input mt-1" /></label><label class="block">${t('purchaseDate')} <input id="edit-purchase-date" type="date" value="${trade.purchaseDate}" class="modal-input mt-1" /></label>${mode === 'edit_closed' ? `<label class="block">${t('saleDate')} <input id="edit-sale-date" type="date" value="${trade.saleDate}" class="modal-input mt-1" /></label>` : ''}<label class="block">${t('purchasePrice')} (${currencySymbol})<input id="edit-purchase-price" type="number" step="any" value="${displayPurchasePrice.toFixed(5)}" class="modal-input mt-1" /></label>${mode === 'edit_closed' ? `<label class="block">${t('salePrice')} (${currencySymbol})<input id="edit-sale-price" type="number" step="any" value="${displaySalePrice.toFixed(5)}" class="modal-input mt-1" /></label>` : ''}<label class="block">${t('quantity')} <input id="edit-quantity" type="number" step="any" value="${trade.quantity}" class="modal-input mt-1" /></label></div><div class="flex justify-end items-center mt-4"><button type="submit" class="modal-btn bg-yellow-500 hover:bg-yellow-600 text-black">${t('saveChanges')}</button></div>`;
+                    const currentLeverage = trade.leverage || 1;
+
+                    content = `<h2 class="text-lg font-bold mb-3 text-white">${t('editTransaction')}</h2>
+                               <div class="space-y-3 text-sm">
+                                   <label class="block">${t('cryptoSymbol')} <input id="edit-crypto-symbol" type="text" value="${trade.cryptoSymbol}" required class="modal-input mt-1" /></label>
+                                   <label class="block">${t('purchaseDate')} <input id="edit-purchase-date" type="date" value="${trade.purchaseDate}" class="modal-input mt-1" /></label>
+                                   ${mode === 'edit_closed' ? `<label class="block">${t('saleDate')} <input id="edit-sale-date" type="date" value="${trade.saleDate}" class="modal-input mt-1" /></label>` : ''}
+                                   <label class="block">${t('purchasePrice')} (${currencySymbol})<input id="edit-purchase-price" type="number" step="any" value="${displayPurchasePrice.toFixed(5)}" class="modal-input mt-1" /></label>
+                                   ${mode === 'edit_closed' ? `<label class="block">${t('salePrice')} (${currencySymbol})<input id="edit-sale-price" type="number" step="any" value="${displaySalePrice.toFixed(5)}" class="modal-input mt-1" /></label>` : ''}
+                                   <label class="block">${t('quantity')} <input id="edit-quantity" type="number" step="any" value="${trade.quantity}" class="modal-input mt-1" /></label>
+                                   ${mode === 'edit_open' ? `
+                                       <div class="flex items-center gap-2 pt-2">
+                                            <input type="checkbox" id="edit-leverage-toggle" class="h-4 w-4 rounded border-gray-500 bg-gray-700 text-yellow-500 focus:ring-yellow-400" ${currentLeverage > 1 ? 'checked' : ''}>
+                                            <label for="edit-leverage-toggle" class="text-sm font-medium text-gray-300">${t('leverage')}</label>
+                                       </div>
+                                       <div id="edit-leverage-container" class="flex items-center gap-4 ${currentLeverage > 1 ? '' : 'opacity-50'} transition-opacity">
+                                            <input id="edit-leverage-slider" type="range" min="1" max="100" value="${currentLeverage}" class="custom-slider flex-grow" ${currentLeverage > 1 ? '' : 'disabled'}>
+                                            <span id="edit-leverage-display" class="font-bold text-lg text-yellow-400 w-16 text-center">${currentLeverage}x</span>
+                                       </div>
+                                       <input type="hidden" id="edit-leverage" value="${currentLeverage}">
+                                   ` : (trade.leverage > 1 ? `<div class="text-sm text-gray-400 mt-2">Leva Applicata: <span class="font-semibold text-white">${trade.leverage}x</span></div>` : '')}
+                               </div>
+                               <div class="flex justify-end items-center mt-4"><button type="submit" class="modal-btn bg-yellow-500 hover:bg-yellow-600 text-black">${t('saveChanges')}</button></div>`;
                 }
                 return `<div class="modal-overlay"><div class="modal-content max-w-md"><button class="absolute top-3 right-4 text-3xl font-light text-gray-400 hover:text-white" data-action="close-modal">&times;</button><form id="trade-form" class="modal-body">${content}</form></div></div>`;
             }
@@ -1604,11 +1670,51 @@
                 if (e.target.closest('#converter-body')) {
                     handleConversion(e);
                 }
+
+                const leverageToggle = e.target.closest('#open-leverage-toggle, #edit-leverage-toggle');
+                if (leverageToggle) {
+                    const isEdit = leverageToggle.id.startsWith('edit');
+                    const prefix = isEdit ? 'edit' : 'open';
+                    const container = document.getElementById(`${prefix}-leverage-container`);
+                    const slider = document.getElementById(`${prefix}-leverage-slider`);
+                    const display = document.getElementById(`${prefix}-leverage-display`);
+                    const hiddenInput = document.getElementById(`${prefix}-leverage`);
+
+                    if (leverageToggle.checked) {
+                        container.classList.remove('opacity-50');
+                        slider.disabled = false;
+                        if (slider.value === '1') {
+                            slider.value = 2;
+                            display.textContent = '2x';
+                            hiddenInput.value = 2;
+                        }
+                    } else {
+                        container.classList.add('opacity-50');
+                        slider.disabled = true;
+                        slider.value = 1;
+                        display.textContent = '1x';
+                        hiddenInput.value = 1;
+                    }
+                }
             });
 
             document.body.addEventListener('input', (e) => {
                 if (e.target.closest('#converter-body')) {
                     handleConversion(e);
+                }
+                
+                // Gestione slider leva
+                if (e.target.id === 'open-leverage-slider' || e.target.id === 'edit-leverage-slider') {
+                    const slider = e.target;
+                    const displayId = slider.id.replace('-slider', '-display');
+                    const hiddenInputId = slider.id.replace('-slider', '');
+                    const display = document.getElementById(displayId);
+                    const hiddenInput = document.getElementById(hiddenInputId);
+                    if (display && hiddenInput) {
+                        const value = slider.value;
+                        display.textContent = `${value}x`;
+                        hiddenInput.value = value;
+                    }
                 }
             });
             
@@ -1676,6 +1782,7 @@
                             purchaseDate: document.getElementById('open-date').value, 
                             purchasePrice: convertFromCurrentCurrencyToUSD(priceInCurrentCurrency), 
                             quantity: parseFloat(document.getElementById('open-quantity').value), 
+                            leverage: parseInt(document.getElementById('open-leverage').value, 10) || 1,
                             status: 'open', 
                             cryptoSymbol: document.getElementById('open-crypto-select').value 
                         };
@@ -1702,6 +1809,9 @@
                             quantity: parseFloat(document.getElementById('edit-quantity').value),
                             cryptoSymbol: document.getElementById('edit-crypto-symbol').value.trim().toUpperCase(),
                         };
+                        if (mode === 'edit_open') {
+                            updatedData.leverage = parseInt(document.getElementById('edit-leverage').value, 10) || 1;
+                        }
                         if (mode === 'edit_closed') {
                             const salePriceInCurrent = parseFloat(document.getElementById('edit-sale-price').value);
                             updatedData.saleDate = document.getElementById('edit-sale-date').value;
@@ -2010,7 +2120,7 @@
                     return;
                 }
 
-                const headers = ['ID', 'Simbolo', 'Data Acquisto', `Prezzo Acquisto (${state.currentCurrency.toUpperCase()})`, 'Quantità', 'Data Vendita', `Prezzo Vendita (${state.currentCurrency.toUpperCase()})`, 'Stato', `Profitto Netto (${state.currentCurrency.toUpperCase()})`];
+                const headers = ['ID', 'Simbolo', 'Data Acquisto', `Prezzo Acquisto (${state.currentCurrency.toUpperCase()})`, 'Quantità', 'Leva', 'Data Vendita', `Prezzo Vendita (${state.currentCurrency.toUpperCase()})`, 'Stato', `Profitto Netto (${state.currentCurrency.toUpperCase()})`];
                 
                 const rows = tradesInMonth.map(trade => {
                     const p = calculateTradeProfits(trade);
@@ -2020,6 +2130,7 @@
                         trade.purchaseDate,
                         convertToCurrentCurrency(trade.purchasePrice).toFixed(4),
                         trade.quantity,
+                        trade.leverage || 1,
                         trade.saleDate || '',
                         trade.salePrice ? convertToCurrentCurrency(trade.salePrice).toFixed(4) : '',
                         trade.status,
