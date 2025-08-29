@@ -738,13 +738,13 @@
             const getCurrencySymbol = () => (state.supportedCurrencies.find(c => c.code === state.currentCurrency) || {symbol: '$'}).symbol;
 
             const convertToCurrentCurrency = (amountInUSD) => {
-                if (!state.fiatRates || !state.currentCurrency) return amountInUSD;
+                if (!state.fiatRates || !state.currentCurrency || !amountInUSD) return amountInUSD;
                 const rate = state.fiatRates[state.currentCurrency.toUpperCase()];
                 return rate ? amountInUSD * rate : amountInUSD;
             };
 
             const convertFromCurrentCurrencyToUSD = (amount) => {
-                if (!state.fiatRates || !state.currentCurrency) return amount;
+                if (!state.fiatRates || !state.currentCurrency || !amount) return amount;
                 const rate = state.fiatRates[state.currentCurrency.toUpperCase()];
                 return rate ? amount / rate : amount;
             };
@@ -1762,31 +1762,227 @@
             }
 
             // --- REPORT GENERATION ---
+            function generateReportContent(trades, currencySymbol) {
+                const totalProfitUSD = trades.reduce((acc, t) => acc + t.netProfit, 0);
+                const totalProfit = convertToCurrentCurrency(totalProfitUSD);
+                
+                const winningTrades = trades.filter(t => t.netProfit > 0);
+                const losingTrades = trades.filter(t => t.netProfit <= 0);
+                
+                const wins = winningTrades.length;
+                const losses = losingTrades.length;
+                const winRate = trades.length > 0 ? (wins / trades.length) * 100 : 0;
+                
+                const totalWinAmount = convertToCurrentCurrency(winningTrades.reduce((acc, t) => acc + t.netProfit, 0));
+                const totalLossAmount = convertToCurrentCurrency(losingTrades.reduce((acc, t) => acc + t.netProfit, 0));
+                
+                const averageWin = wins > 0 ? totalWinAmount / wins : 0;
+                const averageLoss = losses > 0 ? totalLossAmount / losses : 0;
+                
+                const profitFactor = (totalLossAmount !== 0) ? Math.abs(totalWinAmount / totalLossAmount) : Infinity;
+
+                const bestTrade = trades.reduce((max, t) => t.netProfit > max.netProfit ? t : max, { netProfit: -Infinity });
+                const worstTrade = trades.reduce((min, t) => t.netProfit < min.netProfit ? t : min, { netProfit: Infinity });
+
+                const tradeCounts = trades.reduce((acc, t) => {
+                    acc[t.cryptoSymbol] = (acc[t.cryptoSymbol] || 0) + 1;
+                    return acc;
+                }, {});
+                const mostTraded = Object.keys(tradeCounts).reduce((a, b) => tradeCounts[a] > tradeCounts[b] ? a : b, '');
+
+                return `
+                    <div class="grid grid-cols-2 gap-3">
+                        <div class="col-span-2 bg-gray-800 p-4 rounded-xl text-center">
+                            <div class="text-4xl mb-2">💰</div>
+                            <p class="text-sm text-gray-400 uppercase tracking-wider">Profitto Netto Totale</p>
+                            <p class="text-3xl font-bold ${totalProfit >= 0 ? 'profit' : 'loss'}">${totalProfit.toFixed(2)} ${currencySymbol}</p>
+                        </div>
+                        <div class="col-span-2 bg-gray-800 p-4 rounded-xl text-center">
+                            <div class="text-4xl mb-2">📊</div>
+                            <p class="text-sm text-gray-400 uppercase tracking-wider">Tasso di Vittoria</p>
+                            <p class="text-3xl font-bold">${winRate.toFixed(1)}%</p>
+                            <div class="w-full bg-gray-700 rounded-full h-4 mt-3 flex overflow-hidden border-2 border-gray-900/50">
+                                <div class="bg-green-500 h-full" style="width: ${winRate}%" title="Vittorie: ${wins}"></div>
+                            </div>
+                            <div class="flex justify-between text-sm mt-2 px-1">
+                                <span class="text-green-400">Vittorie: ${wins}</span>
+                                <span class="text-red-400">Perdite: ${losses}</span>
+                            </div>
+                        </div>
+                        <div class="bg-gray-800 p-4 rounded-xl text-center">
+                            <div class="text-3xl mb-1">📈</div>
+                            <p class="text-xs text-gray-400">Profitto Medio</p>
+                            <p class="text-lg font-bold profit">${averageWin.toFixed(2)} ${currencySymbol}</p>
+                        </div>
+                        <div class="bg-gray-800 p-4 rounded-xl text-center">
+                            <div class="text-3xl mb-1">📉</div>
+                            <p class="text-xs text-gray-400">Perdita Media</p>
+                            <p class="text-lg font-bold loss">${averageLoss.toFixed(2)} ${currencySymbol}</p>
+                        </div>
+                        <div class="bg-gray-800 p-4 rounded-xl text-center">
+                            <div class="text-3xl mb-1">⚖️</div>
+                            <p class="text-xs text-gray-400">Profit Factor</p>
+                            <p class="text-xl font-bold">${isFinite(profitFactor) ? profitFactor.toFixed(2) : '∞'}</p>
+                        </div>
+                        <div class="bg-gray-800 p-4 rounded-xl text-center">
+                            <div class="text-3xl mb-1">🔄</div>
+                            <p class="text-xs text-gray-400">Asset più Scambiato</p>
+                            <p class="text-xl font-bold">${mostTraded}</p>
+                        </div>
+                        <div class="bg-gray-800 p-4 rounded-xl text-center">
+                            <div class="text-3xl mb-1">🏆</div>
+                            <p class="text-xs text-gray-400">Miglior Trade</p>
+                            <p class="text-lg font-bold profit">${convertToCurrentCurrency(bestTrade.netProfit).toFixed(2)} ${currencySymbol}</p>
+                        </div>
+                        <div class="bg-gray-800 p-4 rounded-xl text-center">
+                            <div class="text-3xl mb-1">👎</div>
+                            <p class="text-xs text-gray-400">Peggior Trade</p>
+                            <p class="text-lg font-bold loss">${convertToCurrentCurrency(worstTrade.netProfit).toFixed(2)} ${currencySymbol}</p>
+                        </div>
+                    </div>
+                `;
+            }
+
             function handleGenerateMonthlyReport() {
-                // ... (codice invariato)
+                const { currentYear, currentMonthIndex, trades } = state;
+                const currencySymbol = getCurrencySymbol();
+                const monthName = translations[state.currentLanguage].monthNames[currentMonthIndex];
+                const monthKey = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`;
+                const tradesInMonth = trades.filter(t => t.status === 'closed' && t.saleDate && t.saleDate.startsWith(monthKey)).map(calculateTradeProfits);
+
+                if (tradesInMonth.length === 0) {
+                    state.infoModal = { isOpen: true, title: t('monthlyReportFor') + ` ${monthName}`, content: `<p>${t('noTradesThisMonth')}</p>`, isLoading: false };
+                } else {
+                    const content = generateReportContent(tradesInMonth, currencySymbol);
+                    state.infoModal = { isOpen: true, title: t('monthlyReportFor') + ` ${monthName}`, content, isLoading: false };
+                }
+                render();
             }
 
             function handleGenerateYearlyReport(year) {
-                // ... (codice invariato)
+                const { trades } = state;
+                const currencySymbol = getCurrencySymbol();
+                const tradesInYear = trades.filter(t => t.status === 'closed' && t.saleDate && t.saleDate.startsWith(year)).map(calculateTradeProfits);
+
+                if (tradesInYear.length === 0) {
+                    state.infoModal = { isOpen: true, title: t('yearlyReportFor') + ` ${year}`, content: `<p>${t('noTradesThisYear')}</p>`, isLoading: false };
+                } else {
+                    const content = generateReportContent(tradesInYear, currencySymbol);
+                    state.infoModal = { isOpen: true, title: t('yearlyReportFor') + ` ${year}`, content, isLoading: false };
+                }
+                render();
             }
             
             // --- CSV DOWNLOAD FUNCTION ---
             function handleDownloadCsv() {
-                // ... (codice invariato)
+                const { trades } = state;
+                if (trades.length === 0) return;
+                
+                const headers = "ID,Simbolo,Data Acquisto,Prezzo Acquisto (USD),Quantità,Leva,Data Vendita,Prezzo Vendita (USD),Stato,Profitto Netto (USD),Profitto (%)";
+                const rows = trades.map(trade => {
+                    const p = calculateTradeProfits(trade);
+                    return [
+                        trade.id,
+                        trade.cryptoSymbol,
+                        trade.purchaseDate,
+                        trade.purchasePrice,
+                        trade.quantity,
+                        trade.leverage || 1,
+                        trade.saleDate || '',
+                        trade.salePrice || '',
+                        trade.status,
+                        p.netProfit.toFixed(4),
+                        p.percentageProfit.toFixed(2)
+                    ].join(',');
+                }).join('\n');
+                
+                const csvContent = `data:text/csv;charset=utf-8,${headers}\n${rows}`;
+                const encodedUri = encodeURI(csvContent);
+                const link = document.createElement("a");
+                link.setAttribute("href", encodedUri);
+                link.setAttribute("download", `tradefolio_report_${new Date().toISOString().split('T')[0]}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
             }
 
             // --- GNEWS FUNCTIONS ---
             function formatNews(newsItems, fromCache = false) {
-                // ... (codice invariato)
+                const cacheStatus = fromCache ? `<p class="text-xs text-gray-500 mb-2">${t('fromCache')}</p>` : '';
+                return cacheStatus + newsItems.map(item => `
+                    <div class="p-3 mb-2 bg-gray-800 rounded-lg border border-gray-700 hover:bg-gray-700 transition-colors">
+                        <a href="${item.url}" target="_blank" data-action="open-news-iframe" data-url="${item.url}" data-title="${item.title}" class="block">
+                            <h3 class="font-semibold text-white">${item.title}</h3>
+                            <p class="text-xs text-gray-400 mt-1">${item.source.name} - ${new Date(item.publishedAt).toLocaleString()}</p>
+                            <p class="text-sm text-gray-300 mt-2">${item.description}</p>
+                        </a>
+                    </div>
+                `).join('');
             }
             
             async function handleFetchNews() {
-                // ... (codice invariato)
+                if (!state.user || !state.gnewsApiKey) return;
+                state.infoModal = { isOpen: true, title: t('searchingRealTimeNews'), content: '', isLoading: true };
+                render();
+
+                const cacheKey = `newsCache`;
+                const cacheRef = doc(db, "users", state.user.uid, "cache", cacheKey);
+
+                try {
+                    const docSnap = await getDoc(cacheRef);
+                    const now = new Date();
+                    const oneHour = 60 * 60 * 1000;
+                    
+                    if (docSnap.exists() && (now - docSnap.data().timestamp.toDate()) < oneHour) {
+                        const news = JSON.parse(docSnap.data().articles);
+                        state.infoModal = { isOpen: true, title: t('latestFinancialNews'), content: formatNews(news, true), isLoading: false };
+                    } else {
+                        const lang = state.currentLanguage === 'it' ? 'it' : 'en';
+                        const url = `https://gnews.io/api/v4/top-headlines?category=business&lang=${lang}&country=it,us&max=10&apikey=${state.gnewsApiKey}`;
+                        const response = await fetch(url);
+                        if (!response.ok) throw new Error(`GNews API fallita: ${response.status}`);
+                        const data = await response.json();
+                        await setDoc(cacheRef, { articles: JSON.stringify(data.articles), timestamp: new Date() });
+                        state.infoModal = { isOpen: true, title: t('latestFinancialNews'), content: formatNews(data.articles), isLoading: false };
+                    }
+                } catch (error) {
+                    console.error("Errore nel caricare le notizie:", error);
+                    state.infoModal = { isOpen: true, title: t('error'), content: `<p>${t('errorLoadingNews')}</p>`, isLoading: false };
+                } finally {
+                    render();
+                }
             }
             
             // --- ECONOMIC CALENDAR FUNCTIONS ---
+            const getCountryFlagEmoji = (country) => {
+                const lowerCountry = (country || '').toLowerCase();
+                if (lowerCountry.includes('usa') || lowerCountry.includes('united states')) return '🇺🇸';
+                if (lowerCountry.includes('euro') || lowerCountry.includes('ez')) return '🇪🇺';
+                if (lowerCountry.includes('cina') || lowerCountry.includes('china')) return '🇨🇳';
+                if (lowerCountry.includes('giappone') || lowerCountry.includes('japan')) return '🇯🇵';
+                if (lowerCountry.includes('germania') || lowerCountry.includes('germany')) return '🇩🇪';
+                if (lowerCountry.includes('regno unito') || lowerCountry.includes('uk')) return '🇬🇧';
+                if (lowerCountry.includes('italia') || lowerCountry.includes('italy')) return '🇮🇹';
+                return '🏳️'; // Default flag
+            };
+
             function formatEconomicCalendar(events, fromCache = false) {
-                // ... (codice invariato)
+                const cacheStatus = fromCache ? `<p class="text-xs text-gray-500 mb-2">${t('fromCache')}</p>` : '';
+                return cacheStatus + events.map(event => `
+                    <div class="p-3 mb-2 bg-gray-800 rounded-lg border border-gray-700 grid grid-cols-3 gap-2 items-center">
+                        <div>
+                            <p class="font-semibold text-white">${event.date}</p>
+                            <p class="text-sm text-gray-400">${event.time || ''}</p>
+                        </div>
+                        <div>
+                            <p class="font-semibold text-white">${event.event}</p>
+                            <p class="text-sm text-gray-400">${getCountryFlagEmoji(event.country)} ${event.country}</p>
+                        </div>
+                        <div class="text-right">
+                            ${renderStars(event.impact)}
+                        </div>
+                    </div>
+                `).join('');
             }
 
             function renderStars(impact) {
@@ -1860,31 +2056,169 @@
             }
 
             // --- AI ANALYSIS FUNCTION ---
+            function formatAiAnalysis(data) {
+                const { overview, strengths, weaknesses, suggestions } = data;
+                
+                const renderList = (items) => items.map(item => `<li class="flex items-start gap-3"><span class="mt-1 text-yellow-400">◆</span><span>${item}</span></li>`).join('');
+
+                return `
+                    <div class="space-y-4">
+                        <div class="bg-gray-800 p-4 rounded-xl">
+                            <h3 class="text-lg font-bold text-white mb-2 flex items-center gap-2">📊 Panoramica Generale</h3>
+                            <p class="text-gray-300">${overview}</p>
+                        </div>
+                        <div class="bg-gray-800 p-4 rounded-xl">
+                            <h3 class="text-lg font-bold text-white mb-2 flex items-center gap-2">💪 Punti di Forza</h3>
+                            <ul class="space-y-2 text-gray-300">${renderList(strengths)}</ul>
+                        </div>
+                         <div class="bg-gray-800 p-4 rounded-xl">
+                            <h3 class="text-lg font-bold text-white mb-2 flex items-center gap-2">📉 Aree di Miglioramento</h3>
+                            <ul class="space-y-2 text-gray-300">${renderList(weaknesses)}</ul>
+                        </div>
+                         <div class="bg-gray-800 p-4 rounded-xl">
+                            <h3 class="text-lg font-bold text-white mb-2 flex items-center gap-2">💡 Suggerimenti Pratici</h3>
+                            <ul class="space-y-2 text-gray-300">${renderList(suggestions)}</ul>
+                        </div>
+                    </div>
+                `;
+            }
+
             async function handleFetchAiAnalysis() {
-                // ... (codice invariato)
+                if (!state.user || !state.apiKey) return;
+                const { currentYear, currentMonthIndex, trades } = state;
+                const monthName = translations[state.currentLanguage].monthNames[currentMonthIndex];
+                const monthKey = `${currentYear}-${String(currentMonthIndex + 1).padStart(2, '0')}`;
+                const tradesInMonth = trades.filter(t => t.status === 'closed' && t.saleDate && t.saleDate.startsWith(monthKey)).map(calculateTradeProfits);
+
+                if (tradesInMonth.length === 0) {
+                    state.infoModal = { isOpen: true, title: t('aiAnalysis'), content: `<p>${t('noTradesToAnalyze')}</p>`, isLoading: false };
+                    render();
+                    return;
+                }
+
+                state.infoModal = { isOpen: true, title: t('aiAnalysis'), content: '', isLoading: true };
+                render();
+
+                const tradesSummary = tradesInMonth.map(t => `Trade in ${t.cryptoSymbol}: Profitto ${t.netProfit.toFixed(2)} USD, Profitto % ${t.percentageProfit.toFixed(2)}%`).join('\n');
+                const prompt = `Agisci come un coach di trading esperto. Analizza la seguente performance di trading per ${monthName} ${currentYear}:\n${tradesSummary}\n\nFornisci un'analisi sintetica e costruttiva. Rispondi in formato JSON con questa struttura: { "overview": "stringa", "strengths": ["stringa", "stringa"], "weaknesses": ["stringa", "stringa"], "suggestions": ["stringa", "stringa"] }. Sii incoraggiante, usa un linguaggio chiaro e fornisci consigli pratici e attuabili.`;
+
+                try {
+                    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${state.apiKey}`;
+                    const payload = { 
+                        contents: [{ parts: [{ text: prompt }] }],
+                        generationConfig: { responseMimeType: "application/json" }
+                    };
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    if (!response.ok) throw new Error(`API fallita: ${response.status}`);
+                    const result = await response.json();
+                    const analysisText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+                    const analysisData = JSON.parse(analysisText);
+                    state.infoModal = { isOpen: true, title: t('aiAnalysis'), content: formatAiAnalysis(analysisData), isLoading: false };
+                } catch (error) {
+                    console.error("Errore analisi AI:", error);
+                    state.infoModal = { isOpen: true, title: t('error'), content: `<p>Impossibile ottenere l'analisi AI in questo momento.</p>`, isLoading: false };
+                } finally {
+                    render();
+                }
             }
             
             // --- INFO FUNCTION ---
             function handleShowInfo() {
-                // ... (codice invariato)
+                const content = `
+                    <div class="space-y-4">
+                        <p><strong>Tradefolio</strong> è un'applicazione per il tracciamento delle operazioni di trading, progettata per aiutare gli utenti a monitorare le proprie performance e a prendere decisioni più informate.</p>
+                        <p><strong>Versione:</strong> 6.10</p>
+                        <p><strong>Sviluppatore:</strong> Fabio Amendola</p>
+                        <p><strong>Disclaimer:</strong> Questa applicazione è fornita "così com'è", senza alcuna garanzia. L'utente si assume la piena responsabilità per l'uso dell'applicazione e per qualsiasi decisione finanziaria presa sulla base delle informazioni in essa contenute. Lo sviluppatore non è responsabile per eventuali perdite finanziarie.</p>
+                    </div>`;
+                state.infoModal = { isOpen: true, title: t("termsAndConditions"), content, isLoading: false };
+                render();
             }
 
             // --- CONVERTER FUNCTION ---
             function handleSwapCurrencies() {
-                // ... (codice invariato)
+                const fromAmountInput = document.getElementById('converter-from-amount');
+                const fromCurrencySelect = document.getElementById('converter-from-currency');
+                const toAmountInput = document.getElementById('converter-to-amount');
+                const toCurrencySelect = document.getElementById('converter-to-currency');
+                
+                const fromCurrency = fromCurrencySelect.value;
+                const toCurrency = toCurrencySelect.value;
+                
+                fromCurrencySelect.value = toCurrency;
+                toCurrencySelect.value = fromCurrency;
+                
+                handleConversion();
             }
 
-            function handleConversion(event) {
-                // ... (codice invariato)
+            async function handleConversion(event) {
+                const fromAmountInput = document.getElementById('converter-from-amount');
+                const fromCurrencySelect = document.getElementById('converter-from-currency');
+                const toAmountInput = document.getElementById('converter-to-amount');
+                const toCurrencySelect = document.getElementById('converter-to-currency');
+                const rateDisplay = document.getElementById('rate-display');
+
+                const fromAmount = parseFloat(fromAmountInput.value) || 0;
+                const fromCurrency = fromCurrencySelect.value;
+                const toCurrency = toCurrencySelect.value;
+                
+                rateDisplay.innerHTML = `<div class="loader !w-5 !h-5 !border-2 mx-auto"></div>`;
+
+                const getPriceInUSD = (currency) => {
+                    if (state.fiatForConverter.some(f => f.code === currency)) {
+                        return 1 / (state.fiatRates[currency] || 1);
+                    }
+                    const crypto = state.tickerData.find(c => c.id === currency || c.symbol.toUpperCase() === currency);
+                    return crypto ? crypto.current_price : null;
+                };
+
+                const fromPriceUSD = getPriceInUSD(fromCurrency);
+                const toPriceUSD = getPriceInUSD(toCurrency);
+                
+                if (fromPriceUSD !== null && toPriceUSD !== null) {
+                    const rate = fromPriceUSD / toPriceUSD;
+                    const toAmount = fromAmount * rate;
+                    toAmountInput.value = toAmount.toFixed(fromPriceUSD > toPriceUSD ? 8 : 2);
+                    rateDisplay.textContent = `1 ${fromCurrency} = ${rate.toFixed(6)} ${toCurrency}`;
+                } else {
+                    toAmountInput.value = '';
+                    rateDisplay.textContent = 'Conversione non disponibile';
+                }
             }
 
             // --- API & INITIALIZATION ---
             async function fetchFiatRates() {
-                // ... (codice invariato)
+                if (!state.user) return;
+                const cacheKey = `fiatRatesCache`;
+                const cacheRef = doc(db, "users", state.user.uid, "cache", cacheKey);
+                try {
+                    const docSnap = await getDoc(cacheRef);
+                    const now = new Date();
+                    const sixHours = 6 * 60 * 60 * 1000;
+                    if (docSnap.exists() && (now - docSnap.data().timestamp.toDate()) < sixHours) {
+                        state.fiatRates = docSnap.data().rates;
+                    } else {
+                        const response = await fetch('https://api.exchangerate-api.com/v4/latest/USD');
+                        if (!response.ok) throw new Error('Network response was not ok');
+                        const data = await response.json();
+                        state.fiatRates = data.rates;
+                        await setDoc(cacheRef, { rates: data.rates, timestamp: new Date() });
+                    }
+                } catch (error) {
+                    console.error("Could not fetch fiat rates:", error);
+                }
             }
 
             async function fetchTickerData() {
-                // ... (codice invariato)
+                if (!navigator.onLine) return;
+                try {
+                    const response = await fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&sparkline=false`);
+                    if (!response.ok) throw new Error('Network response was not ok');
+                    state.tickerData = await response.json();
+                    render();
+                } catch (error) {
+                    console.error("Could not fetch ticker data:", error);
+                }
             }
             
             // --- UI/AUTH FLOW MANAGEMENT ---
