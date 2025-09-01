@@ -1906,6 +1906,37 @@
                 document.body.removeChild(link);
             }
 
+            // --- API FUNCTIONS WITH RETRY LOGIC ---
+            async function fetchWithRetry(url, options, maxRetries = 3) {
+                let attempt = 0;
+                let delay = 1000; // start with 1 second
+
+                while (attempt < maxRetries) {
+                    try {
+                        const response = await fetch(url, options);
+                        if (response.ok) {
+                            return response; // Success
+                        }
+                        // Only retry on server errors (5xx)
+                        if (response.status >= 500 && response.status <= 599) {
+                             throw new Error(`API fallita con stato: ${response.status}`);
+                        } else {
+                            // Don't retry on client errors (4xx) or other issues, fail immediately
+                            return response;
+                        }
+                    } catch (error) {
+                        attempt++;
+                        if (attempt >= maxRetries) {
+                            console.error(`Tutti i tentativi di fetch sono falliti per ${url}`, error);
+                            throw error; // Re-throw the last error after all retries
+                        }
+                        console.warn(`Tentativo ${attempt} fallito. Nuovo tentativo in ${delay / 1000}s...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        delay *= 2; // Exponential backoff
+                    }
+                }
+            }
+
             // --- GNEWS FUNCTIONS ---
             function formatNews(newsItems, fromCache = false) {
                 const cacheStatus = fromCache ? `<p class="text-xs text-gray-500 mb-2">${t('fromCache')}</p>` : '';
@@ -1939,7 +1970,7 @@
                     } else {
                         const lang = state.currentLanguage === 'it' ? 'it' : 'en';
                         const url = `https://gnews.io/api/v4/top-headlines?category=business&lang=${lang}&country=it,us&max=10&apikey=${state.gnewsApiKey}`;
-                        const response = await fetch(url);
+                        const response = await fetchWithRetry(url, {});
                         if (!response.ok) throw new Error(`GNews API fallita: ${response.status}`);
                         const data = await response.json();
                         await setDoc(cacheRef, { articles: JSON.stringify(data.articles), timestamp: new Date() });
@@ -2017,18 +2048,36 @@
                             state.infoModal = { isOpen: true, title: t('searchingLive'), content: '', isLoading: true };
                             render();
                         }
-                        const prompt = `Cerca il calendario economico per ${monthName} ${currentYear}. Estrai eventi per USA, Eurozona, Cina, Giappone. Fornisci data, ora (CET), paese, nome evento, impatto ('Bassa', 'Media', 'Alta'), precedente e previsto. Rispondi in JSON.`;
+                        const prompt = `Fornisci il calendario economico per ${monthName} ${currentYear} per USA, Eurozona, Cina, Giappone, Germania e Regno Unito. Includi data, ora (CET), paese, nome evento, impatto ('Bassa', 'Media', 'Alta'), valore precedente e previsto.`;
                         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${state.apiKey}`;
                         const payload = {
                             contents: [{ parts: [{ text: prompt }] }],
-                            generationConfig: { responseMimeType: "application/json" }
+                            generationConfig: { 
+                                responseMimeType: "application/json",
+                                responseSchema: {
+                                    type: "ARRAY",
+                                    items: {
+                                        type: "OBJECT",
+                                        properties: {
+                                            "date": { "type": "STRING" },
+                                            "time": { "type": "STRING" },
+                                            "country": { "type": "STRING" },
+                                            "event": { "type": "STRING" },
+                                            "impact": { "type": "STRING" },
+                                            "previous": { "type": "STRING" },
+                                            "forecast": { "type": "STRING" }
+                                        },
+                                        required: ["date", "country", "event", "impact"]
+                                    }
+                                }
+                            }
                         };
-                        const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                        const response = await fetchWithRetry(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         if (!response.ok) throw new Error(`API fallita: ${response.status}`);
                         const result = await response.json();
                         const calendarText = result.candidates?.[0]?.content?.parts?.[0]?.text;
                         if (calendarText) {
-                            calendarEvents = JSON.parse(calendarText.match(/```json\n(.*)\n```/s)[1]);
+                            calendarEvents = JSON.parse(calendarText);
                             await setDoc(cacheRef, { events: JSON.stringify(calendarEvents), timestamp: new Date() });
                             if (showModal) {
                                 state.infoModal = { isOpen: true, title: `${t('economicCalendar')} - ${monthName} ${currentYear}`, content: formatEconomicCalendar(calendarEvents), isLoading: false };
@@ -2108,7 +2157,7 @@
                         contents: [{ parts: [{ text: prompt }] }],
                         generationConfig: { responseMimeType: "application/json" }
                     };
-                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const response = await fetchWithRetry(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     if (!response.ok) throw new Error(`API fallita: ${response.status}`);
                     const result = await response.json();
                     const analysisText = result.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -2313,3 +2362,4 @@
     </script>
 </body>
 </html>
+
