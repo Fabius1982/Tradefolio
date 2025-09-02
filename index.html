@@ -545,7 +545,7 @@
                     cancel: 'Annulla',
                     confirm: 'Conferma',
                     searchingRealTimeNews: 'Ricerca notizie in tempo reale...',
-                    latestFinancialNews: 'Ultime Notizie Finanziarie',
+                    latestCryptoNews: 'Ultime Notizie Crypto',
                     error: 'Errore',
                     errorLoadingNews: "Impossibile caricare le notizie in questo momento.",
                     loadingCalendar: 'Caricamento Calendario...',
@@ -623,7 +623,7 @@
                     cancel: 'Cancel',
                     confirm: 'Confirm',
                     searchingRealTimeNews: 'Searching for real-time news...',
-                    latestFinancialNews: 'Latest Financial News',
+                    latestCryptoNews: 'Latest Crypto News',
                     error: 'Error',
                     errorLoadingNews: "Could not load news at this time.",
                     loadingCalendar: 'Loading Calendar...',
@@ -1255,7 +1255,7 @@
                     modalBody = `<div class="text-sm leading-relaxed">${content || ""}</div>`;
                 }
 
-                const isNewsOrReportModal = title.includes(t('latestFinancialNews')) || title.startsWith(t('monthlyReportFor')) || title.startsWith(t('yearlyReportFor')) || title.startsWith(t('aiAnalysis')) || title.startsWith(t("termsAndConditions")) || title.startsWith(t("economicCalendar")) || title.startsWith(t('highImpactEvents')) || title.startsWith(t('statisticalWarning')) || title.startsWith(t('todaysAlerts'));
+                const isNewsOrReportModal = title.includes(t('latestCryptoNews')) || title.startsWith(t('monthlyReportFor')) || title.startsWith(t('yearlyReportFor')) || title.startsWith(t('aiAnalysis')) || title.startsWith(t("termsAndConditions")) || title.startsWith(t("economicCalendar")) || title.startsWith(t('highImpactEvents')) || title.startsWith(t('statisticalWarning')) || title.startsWith(t('todaysAlerts'));
                 const modalWidthClass = isNewsOrReportModal ? 'max-w-2xl' : 'max-w-md';
 
                 return `<div class="modal-overlay">
@@ -1906,37 +1906,6 @@
                 document.body.removeChild(link);
             }
 
-            // --- API FUNCTIONS WITH RETRY LOGIC ---
-            async function fetchWithRetry(url, options, maxRetries = 3) {
-                let attempt = 0;
-                let delay = 1000; // start with 1 second
-
-                while (attempt < maxRetries) {
-                    try {
-                        const response = await fetch(url, options);
-                        if (response.ok) {
-                            return response; // Success
-                        }
-                        // Only retry on server errors (5xx)
-                        if (response.status >= 500 && response.status <= 599) {
-                             throw new Error(`API fallita con stato: ${response.status}`);
-                        } else {
-                            // Don't retry on client errors (4xx) or other issues, fail immediately
-                            return response;
-                        }
-                    } catch (error) {
-                        attempt++;
-                        if (attempt >= maxRetries) {
-                            console.error(`Tutti i tentativi di fetch sono falliti per ${url}`, error);
-                            throw error; // Re-throw the last error after all retries
-                        }
-                        console.warn(`Tentativo ${attempt} fallito. Nuovo tentativo in ${delay / 1000}s...`);
-                        await new Promise(resolve => setTimeout(resolve, delay));
-                        delay *= 2; // Exponential backoff
-                    }
-                }
-            }
-
             // --- GNEWS FUNCTIONS ---
             function formatNews(newsItems, fromCache = false) {
                 const cacheStatus = fromCache ? `<p class="text-xs text-gray-500 mb-2">${t('fromCache')}</p>` : '';
@@ -1956,7 +1925,7 @@
                 state.infoModal = { isOpen: true, title: t('searchingRealTimeNews'), content: '', isLoading: true };
                 render();
 
-                const cacheKey = `newsCache`;
+                const cacheKey = `cryptoNewsCache`;
                 const cacheRef = doc(db, "users", state.user.uid, "cache", cacheKey);
 
                 try {
@@ -1966,15 +1935,15 @@
                     
                     if (docSnap.exists() && (now - docSnap.data().timestamp.toDate()) < oneHour) {
                         const news = JSON.parse(docSnap.data().articles);
-                        state.infoModal = { isOpen: true, title: t('latestFinancialNews'), content: formatNews(news, true), isLoading: false };
+                        state.infoModal = { isOpen: true, title: t('latestCryptoNews'), content: formatNews(news, true), isLoading: false };
                     } else {
                         const lang = state.currentLanguage === 'it' ? 'it' : 'en';
-                        const url = `https://gnews.io/api/v4/top-headlines?category=business&lang=${lang}&country=it,us&max=10&apikey=${state.gnewsApiKey}`;
-                        const response = await fetchWithRetry(url, {});
+                        const url = `https://gnews.io/api/v4/search?q=cryptocurrency%20OR%20bitcoin%20OR%20ethereum&lang=${lang}&sortby=publishedAt&max=10&apikey=${state.gnewsApiKey}`;
+                        const response = await fetch(url);
                         if (!response.ok) throw new Error(`GNews API fallita: ${response.status}`);
                         const data = await response.json();
                         await setDoc(cacheRef, { articles: JSON.stringify(data.articles), timestamp: new Date() });
-                        state.infoModal = { isOpen: true, title: t('latestFinancialNews'), content: formatNews(data.articles), isLoading: false };
+                        state.infoModal = { isOpen: true, title: t('latestCryptoNews'), content: formatNews(data.articles), isLoading: false };
                     }
                 } catch (error) {
                     console.error("Errore nel caricare le notizie:", error);
@@ -2048,36 +2017,18 @@
                             state.infoModal = { isOpen: true, title: t('searchingLive'), content: '', isLoading: true };
                             render();
                         }
-                        const prompt = `Fornisci il calendario economico per ${monthName} ${currentYear} per USA, Eurozona, Cina, Giappone, Germania e Regno Unito. Includi data, ora (CET), paese, nome evento, impatto ('Bassa', 'Media', 'Alta'), valore precedente e previsto.`;
+                        const prompt = `Cerca il calendario economico per ${monthName} ${currentYear}. Estrai eventi per USA, Eurozona, Cina, Giappone. Fornisci data, ora (CET), paese, nome evento, impatto ('Bassa', 'Media', 'Alta'), precedente e previsto. Rispondi in JSON.`;
                         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${state.apiKey}`;
                         const payload = {
                             contents: [{ parts: [{ text: prompt }] }],
-                            generationConfig: { 
-                                responseMimeType: "application/json",
-                                responseSchema: {
-                                    type: "ARRAY",
-                                    items: {
-                                        type: "OBJECT",
-                                        properties: {
-                                            "date": { "type": "STRING" },
-                                            "time": { "type": "STRING" },
-                                            "country": { "type": "STRING" },
-                                            "event": { "type": "STRING" },
-                                            "impact": { "type": "STRING" },
-                                            "previous": { "type": "STRING" },
-                                            "forecast": { "type": "STRING" }
-                                        },
-                                        required: ["date", "country", "event", "impact"]
-                                    }
-                                }
-                            }
+                            generationConfig: { responseMimeType: "application/json" }
                         };
-                        const response = await fetchWithRetry(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                        const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                         if (!response.ok) throw new Error(`API fallita: ${response.status}`);
                         const result = await response.json();
                         const calendarText = result.candidates?.[0]?.content?.parts?.[0]?.text;
                         if (calendarText) {
-                            calendarEvents = JSON.parse(calendarText);
+                            calendarEvents = JSON.parse(calendarText.match(/```json\n(.*)\n```/s)[1]);
                             await setDoc(cacheRef, { events: JSON.stringify(calendarEvents), timestamp: new Date() });
                             if (showModal) {
                                 state.infoModal = { isOpen: true, title: `${t('economicCalendar')} - ${monthName} ${currentYear}`, content: formatEconomicCalendar(calendarEvents), isLoading: false };
@@ -2157,7 +2108,7 @@
                         contents: [{ parts: [{ text: prompt }] }],
                         generationConfig: { responseMimeType: "application/json" }
                     };
-                    const response = await fetchWithRetry(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                    const response = await fetch(apiUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
                     if (!response.ok) throw new Error(`API fallita: ${response.status}`);
                     const result = await response.json();
                     const analysisText = result.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -2362,4 +2313,6 @@
     </script>
 </body>
 </html>
+
+
 
